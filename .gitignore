@@ -1,0 +1,342 @@
+###############################################################################
+# OrderFlow — .gitignore otimizado
+# Stack: .NET 10, EF Core, Redis, RabbitMQ, Docker, Serilog/Seq, GitHub Actions
+###############################################################################
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Agents — Copilot / Claude Code / Cursor
+# ─────────────────────────────────────────────────────────────────────────────
+.agents/
+.claude/
+.cursor/
+.copilot/
+skills-lock.json
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Segurança / Segredos — NUNCA commitar
+# ─────────────────────────────────────────────────────────────────────────────
+**/.env
+**/.env.*
+!**/.env.example
+*.pfx
+*.snk
+*.publishsettings
+appsettings.*.local.json
+
+# ─────────────────────────────────────────────────────────────────────────────
+# .NET — Build, Publish, Artifacts
+# ─────────────────────────────────────────────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+publish/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+project.lock.json
+project.fragment.lock.json
+*.binlog
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# Files built by Visual Studio / MSBuild
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+!Directory.Build.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.log
+*.tlog
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test Results & Code Coverage
+# ─────────────────────────────────────────────────────────────────────────────
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+coverage*.json
+coverage*.xml
+coverage*.info
+coverage*.cobertura.xml
+*.coverage
+*.coveragexml
+TestResults/
+coveragereport/
+OpenCover/
+BenchmarkDotNet.Artifacts/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IDEs — Visual Studio
+# ─────────────────────────────────────────────────────────────────────────────
+.vs/
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+Generated\ Files/
+*.[Cc]ache
+!?*.[Cc]ache/
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+~$*
+*~
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IDEs — VS Code
+# ─────────────────────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IDEs — JetBrains Rider / ReSharper
+# ─────────────────────────────────────────────────────────────────────────────
+.idea/
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Docker
+# ─────────────────────────────────────────────────────────────────────────────
+**/docker-compose.override.yml
+docker/data/
+docker/volumes/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SQL Server (LocalDB / Docker mounts)
+# ─────────────────────────────────────────────────────────────────────────────
+*.mdf
+*.ldf
+*.ndf
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Redis
+# ─────────────────────────────────────────────────────────────────────────────
+dump.rdb
+appendonly.aof
+*.rdb
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RabbitMQ (dados locais do container)
+# ─────────────────────────────────────────────────────────────────────────────
+rabbitmq_data/
+mnesia/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Serilog / Seq (structured logging)
+# ─────────────────────────────────────────────────────────────────────────────
+logs/
+*.clef
+seq-data/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Azure
+# ─────────────────────────────────────────────────────────────────────────────
+PublishScripts/
+*.azurePubxml
+*.[Pp]ublish.xml
+*.pubxml
+*.publishproj
+csx/
+*.build.csdef
+ecf/
+rcf/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CI / Ferramentas de build
+# ─────────────────────────────────────────────────────────────────────────────
+_TeamCity*
+*.dotCover
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Health Checks temp DB
+# ─────────────────────────────────────────────────────────────────────────────
+healthchecksdb
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Node (ferramentas de frontend/tooling se necessário)
+# ─────────────────────────────────────────────────────────────────────────────
+node_modules/
+.ntvs_analysis.dat
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mono
+# ─────────────────────────────────────────────────────────────────────────────
+mono_crash.*
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OS
+# ─────────────────────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+._*
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backup / Migration
+# ─────────────────────────────────────────────────────────────────────────────
+_UpgradeReport_Files/
+Backup*/
+UpgradeLog*.XML
+UpgradeLog*.htm
+MigrationBackup/
+*.rptproj.bak
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Misc
+# ─────────────────────────────────────────────────────────────────────────────
+.localhistory/
+.vshistory/
+.ionide/
+.mfractor/
+.fake/
+.tye/
+.cr/personal
+StyleCopReport.xml
+ScaffoldingReadMe.txt
+FakesAssemblies/
+FodyWeavers.xsd
+orleans.codegen.cs
+
+# VS Code files for those working on multiple tools
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Local History for Visual Studio Code
+.history/
+
+# Windows Installer files from build outputs
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# JetBrains Rider
+*.sln.iml
+.idea/
+
+##
+## Visual studio for Mac
+##
+
+
+# globs
+Makefile.in
+*.userprefs
+*.usertasks
+config.make
+config.status
+aclocal.m4
+install-sh
+autom4te.cache/
+*.tar.gz
+tarballs/
+test-results/
+
+# content below from: https://github.com/github/gitignore/blob/main/Global/macOS.gitignore
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon must end with two \r
+Icon
+
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# content below from: https://github.com/github/gitignore/blob/main/Global/Windows.gitignore
+# Windows thumbnail cache files
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+
+# Dump file
+*.stackdump
+
+# Folder config file
+[Dd]esktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# Vim temporary swap files
+*.swp

@@ -1,0 +1,1823 @@
+# Fase 3 — CQRS com MediatR e Application Layer
+
+> **Objetivo:** Implementar a camada Application do Orders API usando CQRS com MediatR, Pipeline Behaviors, Result Pattern, e separação de leitura (Dapper) / escrita (EF Core).
+
+> **Pré-requisito:** Fase 2 concluída (domínio rico com aggregate, value objects, domain events).
+
+### 🎯 O que você vai aprender nesta fase
+
+- Separar **Commands** (escrita) de **Queries** (leitura) com CQRS
+- Implementar handlers com **MediatR** e injeção automática
+- Criar **Pipeline Behaviors** para validação, logging e tratamento de erros
+- Aplicar o **Result Pattern** para fluxo de erros sem exceções
+- Usar **Dapper** para queries de leitura performáticas
+- Configurar **EF Core** com interceptors para dispatch de domain events
+- Validar Commands com **FluentValidation**
+
+---
+
+## Sumário
+
+1. [Visão da Fase](#1-visão-da-fase)
+2. [Decisões Arquiteturais](#2-decisões-arquiteturais)
+3. [Conceitos Chave](#3-conceitos-chave)
+4. [Passo a Passo de Implementação](#4-passo-a-passo-de-implementação)
+5. [Código de Referência Completo](#5-código-de-referência-completo)
+6. [Testes](#6-testes)
+7. [Checkpoint](#7-checkpoint)
+
+---
+
+## 1. Visão da Fase
+
+### O Que Vamos Construir
+
+```
+src/Services/Orders/
+├── OrderFlow.Orders.Application/
+│   ├── Common/
+│   │   ├── Interfaces/
+│   │   │   ├── IOrderReadRepository.cs     # Read side (Dapper)
+│   │   │   └── ICurrentUserService.cs
+│   │   ├── Behaviors/
+│   │   │   ├── ValidationBehavior.cs       # FluentValidation pipeline
+│   │   │   ├── LoggingBehavior.cs          # Request/Response logging
+│   │   │   └── TransactionBehavior.cs      # Unit of Work per request
+│   │   ├── Result.cs                       # Result Pattern
+│   │   └── Error.cs
+│   ├── Orders/
+│   │   ├── Commands/
+│   │   │   ├── CreateOrder/
+│   │   │   │   ├── CreateOrderCommand.cs
+│   │   │   │   ├── CreateOrderCommandHandler.cs
+│   │   │   │   └── CreateOrderCommandValidator.cs
+│   │   │   ├── AddOrderItem/
+│   │   │   │   ├── AddOrderItemCommand.cs
+│   │   │   │   ├── AddOrderItemCommandHandler.cs
+│   │   │   │   └── AddOrderItemCommandValidator.cs
+│   │   │   ├── ConfirmOrder/
+│   │   │   │   ├── ConfirmOrderCommand.cs
+│   │   │   │   └── ConfirmOrderCommandHandler.cs
+│   │   │   └── CancelOrder/
+│   │   │       ├── CancelOrderCommand.cs
+│   │   │       ├── CancelOrderCommandHandler.cs
+│   │   │       └── CancelOrderCommandValidator.cs
+│   │   ├── Queries/
+│   │   │   ├── GetOrderById/
+│   │   │   │   ├── GetOrderByIdQuery.cs
+│   │   │   │   ├── GetOrderByIdQueryHandler.cs
+│   │   │   │   └── OrderDetailDto.cs
+│   │   │   └── GetOrdersByCustomer/
+│   │   │       ├── GetOrdersByCustomerQuery.cs
+│   │   │       ├── GetOrdersByCustomerQueryHandler.cs
+│   │   │       └── OrderSummaryDto.cs
+│   │   └── EventHandlers/
+│   │       └── OrderCreatedDomainEventHandler.cs
+│   └── DependencyInjection.cs
+│
+├── OrderFlow.Orders.Infrastructure/
+│   ├── Persistence/
+│   │   ├── OrdersDbContext.cs
+│   │   ├── Configurations/
+│   │   │   ├── OrderConfiguration.cs
+│   │   │   └── OrderItemConfiguration.cs
+│   │   ├── Repositories/
+│   │   │   ├── OrderRepository.cs
+│   │   │   └── OrderReadRepository.cs       # Dapper queries
+│   │   └── UnitOfWork.cs
+│   ├── Extensions/
+│   │   └── MediatorExtensions.cs            # Dispatch domain events
+│   └── DependencyInjection.cs
+│
+└── OrderFlow.Orders.Api/
+    ├── Controllers/
+    │   └── OrdersController.cs
+    └── Program.cs
+```
+
+### Tópicos do Mercado Cobertos
+
+| Tópico | Detalhe |
+|--------|---------|
+| **CQRS** | Command e Query segregados com modelos diferentes |
+| **MediatR** | IRequest, IRequestHandler, INotificationHandler |
+| **Pipeline Behaviors** | Cross-cutting concerns via IPipelineBehavior |
+| **FluentValidation** | Validação automática por behavior |
+| **Result Pattern** | Sem exceptions para fluxo de controle |
+| **Dapper** | Read-side otimizado com SQL manual |
+| **EF Core** | Write-side com tracking e migrations |
+| **Unit of Work** | Transação coordenando DbContext + Domain Events |
+| **Domain Event Dispatching** | Publicação via MediatR antes do SaveChanges |
+
+---
+
+## 2. Decisões Arquiteturais
+
+### ADR-006: CQRS — Separação de Leitura e Escrita
+
+**Contexto:** Reads e Writes têm necessidades diferentes: escrita precisa de validação e domínio rico; leitura precisa de performance e DTOs planos.
+
+**Decisão:** Usar MediatR para rotear Commands (escrita via EF Core) e Queries (leitura via Dapper).
+
+```
+                    ┌─────────────────────┐
+                    │   OrdersController  │
+                    └──────┬──────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │   MediatR   │
+                    │  (mediator) │
+                    └────┬───┬────┘
+                         │   │
+              ┌──────────┘   └──────────┐
+              │                         │
+    ┌─────────▼─────────┐   ┌──────────▼──────────┐
+    │   Command Handler │   │   Query Handler     │
+    │   (Write Side)    │   │   (Read Side)       │
+    └─────────┬─────────┘   └──────────┬──────────┘
+              │                         │
+    ┌─────────▼─────────┐   ┌──────────▼──────────┐
+    │   EF Core         │   │   Dapper            │
+    │   (Domain Model)  │   │   (Raw SQL → DTO)   │
+    └───────────────────┘   └─────────────────────┘
+```
+
+**Consequências:**
+- (+) Cada lado otimizado independentemente
+- (+) Read DTOs planos (sem tracking overhead)
+- (+) Write com domain model completo
+- (-) Dois modelos para manter
+
+### ADR-007: Result Pattern
+
+**Contexto:** Usar exceptions para fluxo de controle (ex: "order not found") é caro e inelegante.
+
+**Decisão:** Commands e Queries retornam `Result<T>` com erros tipados.
+
+```csharp
+// ❌ Exception como fluxo de controle
+public Order GetOrder(Guid id)
+{
+    return _repo.GetById(id) ?? throw new NotFoundException("Order not found");
+}
+
+// ✅ Result Pattern
+public async Task<Result<OrderDetailDto>> Handle(GetOrderByIdQuery query, CancellationToken ct)
+{
+    var order = await _readRepository.GetByIdAsync(query.OrderId, ct);
+    return order is null
+        ? Result<OrderDetailDto>.Failure(OrderErrors.NotFound(query.OrderId))
+        : Result<OrderDetailDto>.Success(order);
+}
+```
+
+### ADR-008: Pipeline Behaviors
+
+**Contexto:** Validação, logging e transações são cross-cutting concerns — repetir em cada handler é DRY violation.
+
+**Decisão:** Usar `IPipelineBehavior<TRequest, TResponse>` do MediatR.
+
+```
+Request → [Logging] → [Validation] → [Transaction] → Handler → Response
+```
+
+**Por que essa ordem importa?**
+1. **Logging** primeiro — registra todas as requests, inclusive as que falham na validação
+2. **Validation** antes de Transaction — rejeita requests inválidas sem abrir transação (economia de recursos)
+3. **Transaction** por último — envolve apenas o handler em transação real do banco
+
+> ⚠️ A ordem de registro no `AddBehavior()` define a ordem de execução. Registrar `TransactionBehavior` antes de `ValidationBehavior` abriria transações para requests inválidas — desperdício.
+
+---
+
+## 3. Conceitos Chave
+
+### 3.1 MediatR — Mediator Pattern
+
+O MediatR implementa o **Mediator Pattern**: objetos não se comunicam diretamente; tudo passa por um mediador central.
+
+```csharp
+// Sem MediatR: Controller conhece o Handler diretamente
+public class OrdersController(CreateOrderCommandHandler handler)
+{
+    public IActionResult Post(CreateOrderRequest req) => handler.Handle(req); // Acoplamento!
+}
+
+// Com MediatR: Controller só conhece a interface IMediator
+public class OrdersController(IMediator mediator)
+{
+    public async Task<IActionResult> Post(CreateOrderRequest req)
+    {
+        var result = await mediator.Send(new CreateOrderCommand(req.CustomerId, ...));
+        return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
+    }
+}
+```
+
+### 3.2 Command vs Query
+
+| | Command | Query |
+|---|---------|-------|
+| **Intenção** | Mudar estado | Ler dados |
+| **Retorno** | `Result<Guid>` ou `Result` | `Result<Dto>` |
+| **Efeito colateral** | Sim (escrita no banco) | Não |
+| **Validação** | Sim (FluentValidation) | Mínima |
+| **Handler usa** | Repository (EF Core) + Domain | Read Repository (Dapper) |
+
+### 3.3 Unit of Work Pattern
+
+O Unit of Work garante que **todas as operações de um command** sejam atômicas: ou tudo funciona, ou nada funciona.
+
+```
+Command → Begin Transaction
+            ├── Handler altera aggregate
+            ├── Repository salva
+            ├── Domain Events disparados
+            └── Commit Transaction (ou Rollback)
+```
+
+---
+
+## 4. Passo a Passo de Implementação
+
+### 4.1 Criar Projetos
+
+```bash
+# Application
+dotnet new classlib -n OrderFlow.Orders.Application -o src/Services/Orders/OrderFlow.Orders.Application
+dotnet sln add src/Services/Orders/OrderFlow.Orders.Application
+dotnet add src/Services/Orders/OrderFlow.Orders.Application reference src/BuildingBlocks/OrderFlow.SharedKernel
+dotnet add src/Services/Orders/OrderFlow.Orders.Application reference src/Services/Orders/OrderFlow.Orders.Domain
+
+# Pacotes da Application
+dotnet add src/Services/Orders/OrderFlow.Orders.Application package MediatR
+dotnet add src/Services/Orders/OrderFlow.Orders.Application package FluentValidation
+dotnet add src/Services/Orders/OrderFlow.Orders.Application package FluentValidation.DependencyInjectionExtensions
+dotnet add src/Services/Orders/OrderFlow.Orders.Application package Microsoft.Extensions.Logging.Abstractions
+
+# Infrastructure
+dotnet new classlib -n OrderFlow.Orders.Infrastructure -o src/Services/Orders/OrderFlow.Orders.Infrastructure
+dotnet sln add src/Services/Orders/OrderFlow.Orders.Infrastructure
+dotnet add src/Services/Orders/OrderFlow.Orders.Infrastructure reference src/Services/Orders/OrderFlow.Orders.Domain
+dotnet add src/Services/Orders/OrderFlow.Orders.Infrastructure reference src/Services/Orders/OrderFlow.Orders.Application
+
+# Pacotes da Infrastructure
+dotnet add src/Services/Orders/OrderFlow.Orders.Infrastructure package Microsoft.EntityFrameworkCore.SqlServer
+dotnet add src/Services/Orders/OrderFlow.Orders.Infrastructure package Microsoft.EntityFrameworkCore.Tools
+dotnet add src/Services/Orders/OrderFlow.Orders.Infrastructure package Dapper
+dotnet add src/Services/Orders/OrderFlow.Orders.Infrastructure package MediatR
+
+# API
+dotnet new webapi -n OrderFlow.Orders.Api -o src/Services/Orders/OrderFlow.Orders.Api
+dotnet sln add src/Services/Orders/OrderFlow.Orders.Api
+dotnet add src/Services/Orders/OrderFlow.Orders.Api reference src/Services/Orders/OrderFlow.Orders.Application
+dotnet add src/Services/Orders/OrderFlow.Orders.Api reference src/Services/Orders/OrderFlow.Orders.Infrastructure
+
+# Pacotes da API
+dotnet add src/Services/Orders/OrderFlow.Orders.Api package Serilog.AspNetCore
+dotnet add src/Services/Orders/OrderFlow.Orders.Api package Serilog.Sinks.Seq
+
+# Testes
+dotnet new xunit -n OrderFlow.Orders.Application.Tests -o tests/OrderFlow.Orders.Application.Tests
+dotnet sln add tests/OrderFlow.Orders.Application.Tests
+dotnet add tests/OrderFlow.Orders.Application.Tests reference src/Services/Orders/OrderFlow.Orders.Application
+dotnet add tests/OrderFlow.Orders.Application.Tests package FluentAssertions
+dotnet add tests/OrderFlow.Orders.Application.Tests package Moq
+```
+
+---
+
+## 5. Código de Referência Completo
+
+### 5.1 Result Pattern
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Common/Error.cs`**
+
+```csharp
+namespace OrderFlow.Orders.Application.Common;
+
+public sealed record Error(string Code, string Message)
+{
+    public static readonly Error None = new(string.Empty, string.Empty);
+    public static readonly Error NullValue = new("Error.NullValue", "A null value was provided.");
+}
+
+public static class OrderErrors
+{
+    public static Error NotFound(Guid orderId) =>
+        new("Order.NotFound", $"Order with ID '{orderId}' was not found.");
+
+    public static Error AlreadyConfirmed =>
+        new("Order.AlreadyConfirmed", "The order has already been confirmed.");
+
+    public static Error EmptyOrder =>
+        new("Order.Empty", "Cannot confirm an order with no items.");
+
+    public static Error InvalidStatusTransition(string from, string to) =>
+        new("Order.InvalidTransition", $"Cannot transition from '{from}' to '{to}'.");
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Common/Result.cs`**
+
+```csharp
+namespace OrderFlow.Orders.Application.Common;
+
+public class Result
+{
+    public bool IsSuccess { get; }
+    public bool IsFailure => !IsSuccess;
+    public Error Error { get; }
+
+    protected Result(bool isSuccess, Error error)
+    {
+        if (isSuccess && error != Error.None)
+            throw new InvalidOperationException("A successful result cannot have an error.");
+        if (!isSuccess && error == Error.None)
+            throw new InvalidOperationException("A failed result must have an error.");
+
+        IsSuccess = isSuccess;
+        Error = error;
+    }
+
+    public static Result Success() => new(true, Error.None);
+    public static Result Failure(Error error) => new(false, error);
+    public static Result<T> Success<T>(T value) => Result<T>.Success(value);
+    public static Result<T> Failure<T>(Error error) => Result<T>.Failure(error);
+}
+
+public class Result<T> : Result
+{
+    private readonly T? _value;
+
+    public T Value => IsSuccess
+        ? _value!
+        : throw new InvalidOperationException("Cannot access value of a failed result.");
+
+    private Result(T? value, bool isSuccess, Error error) : base(isSuccess, error)
+    {
+        _value = value;
+    }
+
+    public static Result<T> Success(T value) => new(value, true, Error.None);
+    public new static Result<T> Failure(Error error) => new(default, false, error);
+
+    public static implicit operator Result<T>(T value) => Success(value);
+}
+```
+
+### 5.2 Commands
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/CreateOrder/CreateOrderCommand.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.CreateOrder;
+
+public sealed record CreateOrderCommand(
+    Guid CustomerId,
+    string Street,
+    string Number,
+    string Neighborhood,
+    string City,
+    string State,
+    string ZipCode,
+    string? Complement = null) : IRequest<Result<Guid>>;
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/CreateOrder/CreateOrderCommandValidator.cs`**
+
+```csharp
+using FluentValidation;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.CreateOrder;
+
+public sealed class CreateOrderCommandValidator : AbstractValidator<CreateOrderCommand>
+{
+    public CreateOrderCommandValidator()
+    {
+        RuleFor(x => x.CustomerId)
+            .NotEmpty()
+            .WithMessage("Customer ID is required.");
+
+        RuleFor(x => x.Street)
+            .NotEmpty().MaximumLength(200);
+
+        RuleFor(x => x.Number)
+            .NotEmpty().MaximumLength(20);
+
+        RuleFor(x => x.Neighborhood)
+            .NotEmpty().MaximumLength(100);
+
+        RuleFor(x => x.City)
+            .NotEmpty().MaximumLength(100);
+
+        RuleFor(x => x.State)
+            .NotEmpty().Length(2);
+
+        RuleFor(x => x.ZipCode)
+            .NotEmpty().Matches(@"^\d{5}-?\d{3}$")
+            .WithMessage("ZipCode must be in format 00000-000 or 00000000.");
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/CreateOrder/CreateOrderCommandHandler.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
+using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.Orders.Domain.ValueObjects;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.CreateOrder;
+
+public sealed class CreateOrderCommandHandler(
+    IOrderRepository orderRepository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateOrderCommand, Result<Guid>>
+{
+    public async Task<Result<Guid>> Handle(CreateOrderCommand request, CancellationToken ct)
+    {
+        var address = Address.Create(
+            request.Street, request.Number, request.Neighborhood,
+            request.City, request.State, request.ZipCode,
+            request.Complement);
+
+        var order = Order.Create(request.CustomerId, address);
+
+        await orderRepository.AddAsync(order, ct);
+        await unitOfWork.SaveChangesAsync(ct);
+
+        return Result<Guid>.Success(order.Id);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/AddOrderItem/AddOrderItemCommand.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.AddOrderItem;
+
+public sealed record AddOrderItemCommand(
+    Guid OrderId,
+    Guid ProductId,
+    string ProductName,
+    decimal UnitPrice,
+    int Quantity) : IRequest<Result>;
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/AddOrderItem/AddOrderItemCommandValidator.cs`**
+
+```csharp
+using FluentValidation;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.AddOrderItem;
+
+public sealed class AddOrderItemCommandValidator : AbstractValidator<AddOrderItemCommand>
+{
+    public AddOrderItemCommandValidator()
+    {
+        RuleFor(x => x.OrderId).NotEmpty();
+        RuleFor(x => x.ProductId).NotEmpty();
+        RuleFor(x => x.ProductName).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.UnitPrice).GreaterThan(0);
+        RuleFor(x => x.Quantity).GreaterThanOrEqualTo(1);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/AddOrderItem/AddOrderItemCommandHandler.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Domain.Exceptions;
+using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.Orders.Domain.ValueObjects;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.AddOrderItem;
+
+public sealed class AddOrderItemCommandHandler(
+    IOrderRepository orderRepository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<AddOrderItemCommand, Result>
+{
+    public async Task<Result> Handle(AddOrderItemCommand request, CancellationToken ct)
+    {
+        var order = await orderRepository.GetByIdAsync(request.OrderId, ct);
+        if (order is null)
+            return Result.Failure(OrderErrors.NotFound(request.OrderId));
+
+        try
+        {
+            var unitPrice = Money.FromDecimal(request.UnitPrice);
+            order.AddItem(request.ProductId, request.ProductName, unitPrice, request.Quantity);
+
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success();
+        }
+        catch (OrderDomainException ex)
+        {
+            return Result.Failure(new Error(ex.Code, ex.Message));
+        }
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/ConfirmOrder/ConfirmOrderCommand.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.ConfirmOrder;
+
+public sealed record ConfirmOrderCommand(Guid OrderId) : IRequest<Result>;
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/ConfirmOrder/ConfirmOrderCommandHandler.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Domain.Exceptions;
+using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.ConfirmOrder;
+
+public sealed class ConfirmOrderCommandHandler(
+    IOrderRepository orderRepository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<ConfirmOrderCommand, Result>
+{
+    public async Task<Result> Handle(ConfirmOrderCommand request, CancellationToken ct)
+    {
+        var order = await orderRepository.GetByIdAsync(request.OrderId, ct);
+        if (order is null)
+            return Result.Failure(OrderErrors.NotFound(request.OrderId));
+
+        try
+        {
+            order.Confirm();
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success();
+        }
+        catch (OrderDomainException ex)
+        {
+            return Result.Failure(new Error(ex.Code, ex.Message));
+        }
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/CancelOrder/CancelOrderCommand.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.CancelOrder;
+
+public sealed record CancelOrderCommand(Guid OrderId, string Reason) : IRequest<Result>;
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/CancelOrder/CancelOrderCommandValidator.cs`**
+
+```csharp
+using FluentValidation;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.CancelOrder;
+
+public sealed class CancelOrderCommandValidator : AbstractValidator<CancelOrderCommand>
+{
+    public CancelOrderCommandValidator()
+    {
+        RuleFor(x => x.OrderId).NotEmpty();
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Commands/CancelOrder/CancelOrderCommandHandler.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Domain.Exceptions;
+using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Application.Orders.Commands.CancelOrder;
+
+public sealed class CancelOrderCommandHandler(
+    IOrderRepository orderRepository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CancelOrderCommand, Result>
+{
+    public async Task<Result> Handle(CancelOrderCommand request, CancellationToken ct)
+    {
+        var order = await orderRepository.GetByIdAsync(request.OrderId, ct);
+        if (order is null)
+            return Result.Failure(OrderErrors.NotFound(request.OrderId));
+
+        try
+        {
+            order.Cancel(request.Reason);
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Success();
+        }
+        catch (OrderDomainException ex)
+        {
+            return Result.Failure(new Error(ex.Code, ex.Message));
+        }
+    }
+}
+```
+
+### 5.3 Queries (Read Side com Dapper)
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Queries/GetOrderById/OrderDetailDto.cs`**
+
+```csharp
+namespace OrderFlow.Orders.Application.Orders.Queries.GetOrderById;
+
+public sealed record OrderDetailDto
+{
+    public Guid Id { get; init; }
+    public string OrderNumber { get; init; } = string.Empty;
+    public Guid CustomerId { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public decimal TotalAmount { get; init; }
+    public string? CancellationReason { get; init; }
+    public string ShippingAddress { get; init; } = string.Empty;
+    public DateTime CreatedAt { get; init; }
+    public DateTime? UpdatedAt { get; init; }
+    public List<OrderItemDto> Items { get; init; } = [];
+}
+
+public sealed record OrderItemDto
+{
+    public Guid Id { get; init; }
+    public Guid ProductId { get; init; }
+    public string ProductName { get; init; } = string.Empty;
+    public decimal UnitPrice { get; init; }
+    public int Quantity { get; init; }
+    public decimal TotalPrice { get; init; }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Queries/GetOrderById/GetOrderByIdQuery.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+
+namespace OrderFlow.Orders.Application.Orders.Queries.GetOrderById;
+
+public sealed record GetOrderByIdQuery(Guid OrderId) : IRequest<Result<OrderDetailDto>>;
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Queries/GetOrderById/GetOrderByIdQueryHandler.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Application.Common.Interfaces;
+
+namespace OrderFlow.Orders.Application.Orders.Queries.GetOrderById;
+
+public sealed class GetOrderByIdQueryHandler(IOrderReadRepository readRepository)
+    : IRequestHandler<GetOrderByIdQuery, Result<OrderDetailDto>>
+{
+    public async Task<Result<OrderDetailDto>> Handle(GetOrderByIdQuery request, CancellationToken ct)
+    {
+        var order = await readRepository.GetOrderDetailAsync(request.OrderId, ct);
+
+        return order is null
+            ? Result<OrderDetailDto>.Failure(OrderErrors.NotFound(request.OrderId))
+            : Result<OrderDetailDto>.Success(order);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Queries/GetOrdersByCustomer/OrderSummaryDto.cs`**
+
+```csharp
+namespace OrderFlow.Orders.Application.Orders.Queries.GetOrdersByCustomer;
+
+public sealed record OrderSummaryDto
+{
+    public Guid Id { get; init; }
+    public string OrderNumber { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public decimal TotalAmount { get; init; }
+    public int ItemCount { get; init; }
+    public DateTime CreatedAt { get; init; }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Queries/GetOrdersByCustomer/GetOrdersByCustomerQuery.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+
+namespace OrderFlow.Orders.Application.Orders.Queries.GetOrdersByCustomer;
+
+public sealed record GetOrdersByCustomerQuery(
+    Guid CustomerId,
+    int Page = 1,
+    int PageSize = 20) : IRequest<Result<IReadOnlyList<OrderSummaryDto>>>;
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/Queries/GetOrdersByCustomer/GetOrdersByCustomerQueryHandler.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Application.Common.Interfaces;
+
+namespace OrderFlow.Orders.Application.Orders.Queries.GetOrdersByCustomer;
+
+public sealed class GetOrdersByCustomerQueryHandler(IOrderReadRepository readRepository)
+    : IRequestHandler<GetOrdersByCustomerQuery, Result<IReadOnlyList<OrderSummaryDto>>>
+{
+    public async Task<Result<IReadOnlyList<OrderSummaryDto>>> Handle(
+        GetOrdersByCustomerQuery request, CancellationToken ct)
+    {
+        var orders = await readRepository.GetOrdersByCustomerAsync(
+            request.CustomerId, request.Page, request.PageSize, ct);
+
+        return Result<IReadOnlyList<OrderSummaryDto>>.Success(orders);
+    }
+}
+```
+
+### 5.4 Read Repository Interface
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Common/Interfaces/IOrderReadRepository.cs`**
+
+```csharp
+using OrderFlow.Orders.Application.Orders.Queries.GetOrderById;
+using OrderFlow.Orders.Application.Orders.Queries.GetOrdersByCustomer;
+
+namespace OrderFlow.Orders.Application.Common.Interfaces;
+
+public interface IOrderReadRepository
+{
+    Task<OrderDetailDto?> GetOrderDetailAsync(Guid orderId, CancellationToken ct = default);
+    Task<IReadOnlyList<OrderSummaryDto>> GetOrdersByCustomerAsync(
+        Guid customerId, int page, int pageSize, CancellationToken ct = default);
+}
+```
+
+### 5.5 Pipeline Behaviors
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Common/Behaviors/ValidationBehavior.cs`**
+
+```csharp
+using FluentValidation;
+using MediatR;
+
+namespace OrderFlow.Orders.Application.Common.Behaviors;
+
+public sealed class ValidationBehavior<TRequest, TResponse>(
+    IEnumerable<IValidator<TRequest>> validators)
+    : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
+{
+    public async Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken ct)
+    {
+        if (!validators.Any())
+            return await next(ct);
+
+        var context = new ValidationContext<TRequest>(request);
+
+        var validationResults = await Task.WhenAll(
+            validators.Select(v => v.ValidateAsync(context, ct)));
+
+        var failures = validationResults
+            .SelectMany(r => r.Errors)
+            .Where(f => f is not null)
+            .ToList();
+
+        if (failures.Count != 0)
+            throw new ValidationException(failures);
+
+        return await next(ct);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Common/Behaviors/LoggingBehavior.cs`**
+
+```csharp
+using System.Diagnostics;
+using MediatR;
+using Microsoft.Extensions.Logging;
+
+namespace OrderFlow.Orders.Application.Common.Behaviors;
+
+public sealed class LoggingBehavior<TRequest, TResponse>(
+    ILogger<LoggingBehavior<TRequest, TResponse>> logger)
+    : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
+{
+    public async Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken ct)
+    {
+        var requestName = typeof(TRequest).Name;
+
+        logger.LogInformation("Handling {RequestName} {@Request}", requestName, request);
+
+        var stopwatch = Stopwatch.StartNew();
+        var response = await next(ct);
+        stopwatch.Stop();
+
+        if (stopwatch.ElapsedMilliseconds > 500)
+        {
+            logger.LogWarning("Long running request: {RequestName} ({ElapsedMs}ms)",
+                requestName, stopwatch.ElapsedMilliseconds);
+        }
+
+        logger.LogInformation("Handled {RequestName} in {ElapsedMs}ms",
+            requestName, stopwatch.ElapsedMilliseconds);
+
+        return response;
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Common/Behaviors/TransactionBehavior.cs`**
+
+> **Conceito:** O TransactionBehavior envolve commands em uma transação explícita do EF Core. Se o handler falha, a transação faz rollback. Se já existe uma transação ativa (ex: testes), ele não cria outra.
+
+```csharp
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+
+namespace OrderFlow.Orders.Application.Common.Behaviors;
+
+public sealed class TransactionBehavior<TRequest, TResponse>(
+    DbContext dbContext,
+    ILogger<TransactionBehavior<TRequest, TResponse>> logger)
+    : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
+{
+    public async Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken ct)
+    {
+        // Só aplica transação para commands (não para queries)
+        var requestName = typeof(TRequest).Name;
+        if (!requestName.EndsWith("Command"))
+            return await next(ct);
+
+        // Se já há uma transação ativa, não cria outra
+        if (dbContext.Database.CurrentTransaction is not null)
+            return await next(ct);
+
+        IDbContextTransaction? transaction = null;
+
+        try
+        {
+            transaction = await dbContext.Database.BeginTransactionAsync(ct);
+            logger.LogInformation("Begin transaction for {RequestName} ({TransactionId})",
+                requestName, transaction.TransactionId);
+
+            var response = await next(ct);
+
+            await transaction.CommitAsync(ct);
+            logger.LogInformation("Transaction committed for {RequestName} ({TransactionId})",
+                requestName, transaction.TransactionId);
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Transaction rolled back for {RequestName}", requestName);
+
+            if (transaction is not null)
+                await transaction.RollbackAsync(ct);
+
+            throw;
+        }
+        finally
+        {
+            transaction?.Dispose();
+        }
+    }
+}
+```
+
+> **Por que `DbContext` e não `IUnitOfWork`?** O behavior precisa acessar `Database.BeginTransactionAsync()`, que é uma feature do EF Core. O handler continua usando `IUnitOfWork.SaveChangesAsync()` para salvar — o behavior apenas garante que essa operação está dentro de uma transação explícita.
+
+### 5.6 Domain Event Handler
+
+**`src/Services/Orders/OrderFlow.Orders.Application/Orders/EventHandlers/OrderCreatedDomainEventHandler.cs`**
+
+```csharp
+using MediatR;
+using Microsoft.Extensions.Logging;
+using OrderFlow.Orders.Domain.Events;
+
+namespace OrderFlow.Orders.Application.Orders.EventHandlers;
+
+public sealed class OrderCreatedDomainEventHandler(
+    ILogger<OrderCreatedDomainEventHandler> logger)
+    : INotificationHandler<OrderCreatedDomainEvent>
+{
+    public Task Handle(OrderCreatedDomainEvent notification, CancellationToken ct)
+    {
+        logger.LogInformation(
+            "Domain Event: Order created. OrderId={OrderId}, OrderNumber={OrderNumber}, CustomerId={CustomerId}",
+            notification.OrderId, notification.OrderNumber, notification.CustomerId);
+
+        // Na Fase 5, aqui publicaremos um Integration Event para o RabbitMQ
+        return Task.CompletedTask;
+    }
+}
+```
+
+> **Nota:** Para o MediatR publicar Domain Events como `INotification`, os records de domain event precisam implementar `INotification`. Atualize o `IDomainEvent` no SharedKernel:
+
+**Atualização no `src/BuildingBlocks/OrderFlow.SharedKernel/IDomainEvent.cs`**
+
+```csharp
+using MediatR;
+
+namespace OrderFlow.SharedKernel;
+
+public interface IDomainEvent : INotification
+{
+    DateTime OccurredOn { get; }
+}
+```
+
+### 5.7 Application DI
+
+**`src/Services/Orders/OrderFlow.Orders.Application/DependencyInjection.cs`**
+
+```csharp
+using FluentValidation;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using OrderFlow.Orders.Application.Common.Behaviors;
+
+namespace OrderFlow.Orders.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+        var assembly = typeof(DependencyInjection).Assembly;
+
+        services.AddMediatR(cfg =>
+        {
+            cfg.RegisterServicesFromAssembly(assembly);
+
+            // Pipeline order matters! A ordem de registro define a ordem de execução:
+            // 1. Logging: registra request/response (inclusive falhas de validação)
+            // 2. Validation: rejeita requests inválidas ANTES de abrir transação
+            // 3. Transaction: envolve o handler em transação real do DbContext
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
+        });
+
+        services.AddValidatorsFromAssembly(assembly);
+
+        return services;
+    }
+}
+```
+
+### 5.8 Infrastructure — EF Core (Write Side)
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/OrdersDbContext.cs`**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
+
+namespace OrderFlow.Orders.Infrastructure.Persistence;
+
+public sealed class OrdersDbContext(DbContextOptions<OrdersDbContext> options)
+    : DbContext(options)
+{
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrdersDbContext).Assembly);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/Configurations/OrderConfiguration.cs`**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
+
+namespace OrderFlow.Orders.Infrastructure.Persistence.Configurations;
+
+public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
+{
+    public void Configure(EntityTypeBuilder<Order> builder)
+    {
+        builder.ToTable("Orders");
+
+        builder.HasKey(o => o.Id);
+
+        // OrderNumber (Value Object → Owned Type)
+        builder.OwnsOne(o => o.OrderNumber, on =>
+        {
+            on.Property(n => n.Value)
+                .HasColumnName("OrderNumber")
+                .HasMaxLength(20)
+                .IsRequired();
+
+            on.HasIndex(n => n.Value).IsUnique();
+        });
+
+        // ShippingAddress (Value Object → Owned Type)
+        builder.OwnsOne(o => o.ShippingAddress, a =>
+        {
+            a.Property(p => p.Street).HasColumnName("ShippingStreet").HasMaxLength(200).IsRequired();
+            a.Property(p => p.Number).HasColumnName("ShippingNumber").HasMaxLength(20).IsRequired();
+            a.Property(p => p.Complement).HasColumnName("ShippingComplement").HasMaxLength(100);
+            a.Property(p => p.Neighborhood).HasColumnName("ShippingNeighborhood").HasMaxLength(100).IsRequired();
+            a.Property(p => p.City).HasColumnName("ShippingCity").HasMaxLength(100).IsRequired();
+            a.Property(p => p.State).HasColumnName("ShippingState").HasMaxLength(2).IsRequired();
+            a.Property(p => p.ZipCode).HasColumnName("ShippingZipCode").HasMaxLength(8).IsRequired();
+            a.Property(p => p.Country).HasColumnName("ShippingCountry").HasMaxLength(50).IsRequired();
+        });
+
+        // Status (Value Object → conversão)
+        builder.Property(o => o.Status)
+            .HasConversion(
+                s => s.Value,
+                s => OrderStatus.FromString(s))
+            .HasMaxLength(20)
+            .IsRequired();
+
+        // TotalAmount (Value Object → Owned Type)
+        builder.OwnsOne(o => o.TotalAmount, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("TotalAmount").HasPrecision(18, 2).IsRequired();
+            m.Property(p => p.Currency).HasColumnName("TotalCurrency").HasMaxLength(3).IsRequired();
+        });
+
+        builder.Property(o => o.CancellationReason).HasMaxLength(500);
+        builder.Property(o => o.CustomerId).IsRequired();
+        builder.Property(o => o.CreatedAt).IsRequired();
+
+        // Shadow property para concurrency
+        builder.Property<byte[]>("RowVersion").IsRowVersion();
+
+        // Items (navigation)
+        builder.HasMany(o => o.Items)
+            .WithOne()
+            .HasForeignKey(i => i.OrderId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Metadata.FindNavigation(nameof(Order.Items))!
+            .SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        // Ignorar domain events (não persistir)
+        builder.Ignore(o => o.DomainEvents);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/Configurations/OrderItemConfiguration.cs`**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
+
+namespace OrderFlow.Orders.Infrastructure.Persistence.Configurations;
+
+public sealed class OrderItemConfiguration : IEntityTypeConfiguration<OrderItem>
+{
+    public void Configure(EntityTypeBuilder<OrderItem> builder)
+    {
+        builder.ToTable("OrderItems");
+
+        builder.HasKey(i => i.Id);
+
+        builder.Property(i => i.ProductId).IsRequired();
+        builder.Property(i => i.ProductName).HasMaxLength(200).IsRequired();
+        builder.Property(i => i.Quantity).IsRequired();
+
+        builder.OwnsOne(i => i.UnitPrice, m =>
+        {
+            m.Property(p => p.Amount).HasColumnName("UnitPrice").HasPrecision(18, 2).IsRequired();
+            m.Property(p => p.Currency).HasColumnName("UnitPriceCurrency").HasMaxLength(3).IsRequired();
+        });
+
+        // TotalPrice é calculado — ignorar no EF
+        builder.Ignore(i => i.TotalPrice);
+        builder.Ignore(i => i.DomainEvents);
+    }
+}
+```
+
+### 5.9 Infrastructure — Repositories
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/Repositories/OrderRepository.cs`**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
+using OrderFlow.Orders.Domain.Interfaces;
+
+namespace OrderFlow.Orders.Infrastructure.Persistence.Repositories;
+
+public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepository
+{
+    public async Task<Order?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        return await dbContext.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == id, ct);
+    }
+
+    public async Task AddAsync(Order entity, CancellationToken ct = default)
+    {
+        await dbContext.Orders.AddAsync(entity, ct);
+    }
+
+    public void Update(Order entity)
+    {
+        dbContext.Orders.Update(entity);
+    }
+
+    public void Delete(Order entity)
+    {
+        dbContext.Orders.Remove(entity);
+    }
+
+    public async Task<Order?> GetByOrderNumberAsync(string orderNumber, CancellationToken ct = default)
+    {
+        return await dbContext.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.OrderNumber.Value == orderNumber, ct);
+    }
+
+    public async Task<IReadOnlyList<Order>> GetByCustomerIdAsync(Guid customerId, CancellationToken ct = default)
+    {
+        return await dbContext.Orders
+            .Include(o => o.Items)
+            .Where(o => o.CustomerId == customerId)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync(ct);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/Repositories/OrderReadRepository.cs`** (Dapper)
+
+```csharp
+using System.Data;
+using Dapper;
+using OrderFlow.Orders.Application.Common.Interfaces;
+using OrderFlow.Orders.Application.Orders.Queries.GetOrderById;
+using OrderFlow.Orders.Application.Orders.Queries.GetOrdersByCustomer;
+
+namespace OrderFlow.Orders.Infrastructure.Persistence.Repositories;
+
+public sealed class OrderReadRepository(IDbConnection dbConnection) : IOrderReadRepository
+{
+    public async Task<OrderDetailDto?> GetOrderDetailAsync(Guid orderId, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                o.Id, o.OrderNumber, o.CustomerId, o.Status,
+                o.TotalAmount, o.TotalCurrency, o.CancellationReason,
+                CONCAT(o.ShippingStreet, ', ', o.ShippingNumber, ' - ',
+                       o.ShippingNeighborhood, ', ', o.ShippingCity, '/',
+                       o.ShippingState) AS ShippingAddress,
+                o.CreatedAt, o.UpdatedAt
+            FROM Orders o
+            WHERE o.Id = @OrderId;
+
+            SELECT
+                i.Id, i.ProductId, i.ProductName,
+                i.UnitPrice, i.Quantity,
+                (i.UnitPrice * i.Quantity) AS TotalPrice
+            FROM OrderItems i
+            WHERE i.OrderId = @OrderId;
+            """;
+
+        using var multi = await dbConnection.QueryMultipleAsync(sql, new { OrderId = orderId });
+
+        var order = await multi.ReadSingleOrDefaultAsync<OrderDetailDto>();
+        if (order is null)
+            return null;
+
+        var items = (await multi.ReadAsync<OrderItemDto>()).ToList();
+        return order with { Items = items };
+    }
+
+    public async Task<IReadOnlyList<OrderSummaryDto>> GetOrdersByCustomerAsync(
+        Guid customerId, int page, int pageSize, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                o.Id, o.OrderNumber, o.Status, o.TotalAmount,
+                (SELECT COUNT(*) FROM OrderItems i WHERE i.OrderId = o.Id) AS ItemCount,
+                o.CreatedAt
+            FROM Orders o
+            WHERE o.CustomerId = @CustomerId
+            ORDER BY o.CreatedAt DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;
+            """;
+
+        var orders = await dbConnection.QueryAsync<OrderSummaryDto>(sql, new
+        {
+            CustomerId = customerId,
+            Offset = (page - 1) * pageSize,
+            PageSize = pageSize
+        });
+
+        return orders.ToList().AsReadOnly();
+    }
+}
+```
+
+### 5.10 Infrastructure — Unit of Work com Domain Event Dispatching
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/Extensions/MediatorExtensions.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Infrastructure.Persistence;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Infrastructure.Extensions;
+
+public static class MediatorExtensions
+{
+    public static async Task DispatchDomainEventsAsync(
+        this IMediator mediator, OrdersDbContext dbContext, CancellationToken ct = default)
+    {
+        var domainEntities = dbContext.ChangeTracker
+            .Entries<Entity>()
+            .Where(e => e.Entity.DomainEvents.Count != 0)
+            .Select(e => e.Entity)
+            .ToList();
+
+        var domainEvents = domainEntities
+            .SelectMany(e => e.DomainEvents)
+            .ToList();
+
+        domainEntities.ForEach(e => e.ClearDomainEvents());
+
+        foreach (var domainEvent in domainEvents)
+        {
+            await mediator.Publish(domainEvent, ct);
+        }
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/UnitOfWork.cs`**
+
+```csharp
+using MediatR;
+using OrderFlow.Orders.Infrastructure.Extensions;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Infrastructure.Persistence;
+
+public sealed class UnitOfWork(OrdersDbContext dbContext, IMediator mediator) : IUnitOfWork
+{
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        // Dispatch domain events ANTES do SaveChanges
+        // Isso garante que handlers de domain events façam alterações
+        // na mesma transação
+        await mediator.DispatchDomainEventsAsync(dbContext, ct);
+
+        return await dbContext.SaveChangesAsync(ct);
+    }
+}
+```
+
+### 5.11 Infrastructure DI
+
+**`src/Services/Orders/OrderFlow.Orders.Infrastructure/DependencyInjection.cs`**
+
+```csharp
+using System.Data;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using OrderFlow.Orders.Application.Common.Interfaces;
+using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.Orders.Infrastructure.Persistence;
+using OrderFlow.Orders.Infrastructure.Persistence.Repositories;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Infrastructure;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("OrdersDb")
+            ?? throw new InvalidOperationException("Connection string 'OrdersDb' not found.");
+
+        // EF Core (Write side)
+        services.AddDbContext<OrdersDbContext>(options =>
+            options.UseSqlServer(connectionString, sql =>
+            {
+                sql.MigrationsAssembly(typeof(OrdersDbContext).Assembly.FullName);
+                sql.EnableRetryOnFailure(3);
+            }));
+
+        // Dapper (Read side)
+        services.AddScoped<IDbConnection>(_ => new SqlConnection(connectionString));
+
+        // Repositories
+        services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<IOrderReadRepository, OrderReadRepository>();
+
+        // Unit of Work
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+        return services;
+    }
+}
+```
+
+### 5.12 API — Controller e Program.cs
+
+**`src/Services/Orders/OrderFlow.Orders.Api/Controllers/OrdersController.cs`**
+
+```csharp
+using MediatR;
+using Microsoft.AspNetCore.Mvc;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Application.Orders.Commands.AddOrderItem;
+using OrderFlow.Orders.Application.Orders.Commands.CancelOrder;
+using OrderFlow.Orders.Application.Orders.Commands.ConfirmOrder;
+using OrderFlow.Orders.Application.Orders.Commands.CreateOrder;
+using OrderFlow.Orders.Application.Orders.Queries.GetOrderById;
+using OrderFlow.Orders.Application.Orders.Queries.GetOrdersByCustomer;
+
+namespace OrderFlow.Orders.Api.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public sealed class OrdersController(IMediator mediator) : ControllerBase
+{
+    [HttpPost]
+    [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Create(CreateOrderCommand command, CancellationToken ct)
+    {
+        var result = await mediator.Send(command, ct);
+
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(GetById), new { id = result.Value }, result.Value)
+            : BadRequest(result.Error);
+    }
+
+    [HttpPost("{id:guid}/items")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddItem(Guid id, AddOrderItemCommand command, CancellationToken ct)
+    {
+        if (id != command.OrderId)
+            return BadRequest(new Error("Route.Mismatch", "Route ID does not match command OrderId."));
+
+        var result = await mediator.Send(command, ct);
+
+        return result.IsSuccess ? NoContent() : HandleFailure(result);
+    }
+
+    [HttpPost("{id:guid}/confirm")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Confirm(Guid id, CancellationToken ct)
+    {
+        var result = await mediator.Send(new ConfirmOrderCommand(id), ct);
+
+        return result.IsSuccess ? NoContent() : HandleFailure(result);
+    }
+
+    [HttpPost("{id:guid}/cancel")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Cancel(Guid id, CancelOrderCommand command, CancellationToken ct)
+    {
+        if (id != command.OrderId)
+            return BadRequest(new Error("Route.Mismatch", "Route ID does not match command OrderId."));
+
+        var result = await mediator.Send(command, ct);
+
+        return result.IsSuccess ? NoContent() : HandleFailure(result);
+    }
+
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(OrderDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        var result = await mediator.Send(new GetOrderByIdQuery(id), ct);
+
+        return result.IsSuccess ? Ok(result.Value) : NotFound(result.Error);
+    }
+
+    [HttpGet("customer/{customerId:guid}")]
+    [ProducesResponseType(typeof(IReadOnlyList<OrderSummaryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetByCustomer(
+        Guid customerId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetOrdersByCustomerQuery(customerId, page, pageSize), ct);
+
+        return Ok(result.Value);
+    }
+
+    private IActionResult HandleFailure(Result result)
+    {
+        return result.Error.Code.Contains("NotFound")
+            ? NotFound(result.Error)
+            : BadRequest(result.Error);
+    }
+}
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Api/Program.cs`**
+
+```csharp
+using FluentValidation;
+using OrderFlow.Orders.Application;
+using OrderFlow.Orders.Infrastructure;
+using Serilog;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Serilog
+builder.Host.UseSerilog((ctx, cfg) => cfg
+    .ReadFrom.Configuration(ctx.Configuration)
+    .WriteTo.Console()
+    .WriteTo.Seq("http://localhost:5341"));
+
+// Layers
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
+
+// API
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Global exception handler
+builder.Services.AddProblemDetails();
+
+var app = builder.Build();
+
+app.UseSerilogRequestLogging();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// Middleware para FluentValidation exceptions → ProblemDetails
+app.UseExceptionHandler(appBuilder =>
+{
+    appBuilder.Run(async context =>
+    {
+        var exceptionFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        if (exceptionFeature?.Error is ValidationException validationException)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/json";
+
+            var errors = validationException.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                title = "Validation Error",
+                status = 400,
+                errors
+            });
+        }
+    });
+});
+
+app.MapControllers();
+
+app.Run();
+
+// Para testes de integração
+public partial class Program;
+```
+
+**`src/Services/Orders/OrderFlow.Orders.Api/appsettings.json`**
+
+```json
+{
+  "ConnectionStrings": {
+    "OrdersDb": "Server=localhost,1433;Database=OrderFlow_Orders;User Id=sa;Password=YourStr0ng!Pass;TrustServerCertificate=True;MultipleActiveResultSets=true"
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft.AspNetCore": "Warning",
+        "Microsoft.EntityFrameworkCore": "Warning"
+      }
+    }
+  }
+}
+```
+
+---
+
+## 6. Testes
+
+### 6.1 Testes dos Command Handlers
+
+**`tests/OrderFlow.Orders.Application.Tests/Orders/Commands/CreateOrderCommandHandlerTests.cs`**
+
+```csharp
+using FluentAssertions;
+using Moq;
+using OrderFlow.Orders.Application.Orders.Commands.CreateOrder;
+using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
+using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Application.Tests.Orders.Commands;
+
+public class CreateOrderCommandHandlerTests
+{
+    private readonly Mock<IOrderRepository> _repositoryMock = new();
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock = new();
+    private readonly CreateOrderCommandHandler _handler;
+
+    public CreateOrderCommandHandlerTests()
+    {
+        _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        _handler = new CreateOrderCommandHandler(_repositoryMock.Object, _unitOfWorkMock.Object);
+    }
+
+    [Fact]
+    public async Task Handle_ValidCommand_ReturnsSuccessWithOrderId()
+    {
+        var command = new CreateOrderCommand(
+            Guid.NewGuid(),
+            "Rua Teste", "100", "Centro", "São Paulo", "SP", "01001000");
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeEmpty();
+
+        _repositoryMock.Verify(r => r.AddAsync(
+            It.Is<Order>(o => o.Status == OrderStatus.Pending),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+}
+```
+
+### 6.2 Testes do AddOrderItem Handler
+
+**`tests/OrderFlow.Orders.Application.Tests/Orders/Commands/AddOrderItemCommandHandlerTests.cs`**
+
+```csharp
+using FluentAssertions;
+using Moq;
+using OrderFlow.Orders.Application.Orders.Commands.AddOrderItem;
+using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
+using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.Orders.Domain.ValueObjects;
+using OrderFlow.SharedKernel;
+
+namespace OrderFlow.Orders.Application.Tests.Orders.Commands;
+
+public class AddOrderItemCommandHandlerTests
+{
+    private readonly Mock<IOrderRepository> _repositoryMock = new();
+    private readonly Mock<IUnitOfWork> _unitOfWorkMock = new();
+    private readonly AddOrderItemCommandHandler _handler;
+
+    public AddOrderItemCommandHandlerTests()
+    {
+        _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        _handler = new AddOrderItemCommandHandler(_repositoryMock.Object, _unitOfWorkMock.Object);
+    }
+
+    [Fact]
+    public async Task Handle_OrderExists_AddsItemSuccessfully()
+    {
+        var order = Order.Create(Guid.NewGuid(),
+            Address.Create("Rua", "1", "Bairro", "Cidade", "SP", "01001000"));
+
+        _repositoryMock.Setup(r => r.GetByIdAsync(order.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(order);
+
+        var command = new AddOrderItemCommand(order.Id, Guid.NewGuid(), "Laptop", 2500m, 1);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        order.Items.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task Handle_OrderNotFound_ReturnsFailure()
+    {
+        _repositoryMock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Order?)null);
+
+        var command = new AddOrderItemCommand(Guid.NewGuid(), Guid.NewGuid(), "Laptop", 2500m, 1);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("Order.NotFound");
+    }
+}
+```
+
+### 6.3 Testes do Validation Behavior
+
+**`tests/OrderFlow.Orders.Application.Tests/Common/ValidationBehaviorTests.cs`**
+
+```csharp
+using FluentAssertions;
+using FluentValidation;
+using FluentValidation.Results;
+using Moq;
+using OrderFlow.Orders.Application.Common;
+using OrderFlow.Orders.Application.Common.Behaviors;
+
+namespace OrderFlow.Orders.Application.Tests.Common;
+
+public class ValidationBehaviorTests
+{
+    [Fact]
+    public async Task Handle_NoValidators_CallsNext()
+    {
+        var behavior = new ValidationBehavior<TestRequest, Result>(
+            Enumerable.Empty<IValidator<TestRequest>>());
+
+        var nextCalled = false;
+        MediatR.RequestHandlerDelegate<Result> next = _ =>
+        {
+            nextCalled = true;
+            return Task.FromResult(Result.Success());
+        };
+
+        await behavior.Handle(new TestRequest(), next, CancellationToken.None);
+
+        nextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Handle_WithFailures_ThrowsValidationException()
+    {
+        var validatorMock = new Mock<IValidator<TestRequest>>();
+        validatorMock.Setup(v => v.ValidateAsync(It.IsAny<ValidationContext<TestRequest>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ValidationResult([new ValidationFailure("Name", "Name is required")]));
+
+        var behavior = new ValidationBehavior<TestRequest, Result>(
+            [validatorMock.Object]);
+
+        MediatR.RequestHandlerDelegate<Result> next = _ => Task.FromResult(Result.Success());
+
+        var act = () => behavior.Handle(new TestRequest(), next, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    private sealed record TestRequest;
+}
+```
+
+---
+
+## 7. Checkpoint
+
+### Validação Completa
+
+- [ ] **Projetos criados:** Application, Infrastructure, Api, Application.Tests
+- [ ] **Result Pattern:** `Result<T>` e `Error` implementados
+- [ ] **Commands implementados:** CreateOrder, AddOrderItem, ConfirmOrder, CancelOrder
+- [ ] **Queries implementadas:** GetOrderById (Dapper), GetOrdersByCustomer (Dapper)
+- [ ] **Pipeline Behaviors:** Validation, Logging, Transaction
+- [ ] **Domain Event Dispatching:** MediatorExtensions + UnitOfWork
+- [ ] **EF Core Configurations:** Order e OrderItem com owned types
+- [ ] **Dapper Read Repository:** SQL otimizado com QueryMultiple
+- [ ] **Controller funcional:** Todos os endpoints mapeados
+- [ ] **Validação por FluentValidation:** Validators em commands
+- [ ] **Testes:** Handlers com Moq, Behaviors testados
+- [ ] **Swagger:** Endpoints documentados automaticamente
+- [ ] **Migration criada:** `dotnet ef migrations add InitialOrders -p src/Services/Orders/OrderFlow.Orders.Infrastructure -s src/Services/Orders/OrderFlow.Orders.Api`
+- [ ] **Commit:** `feat(orders): implement CQRS with MediatR, pipeline behaviors and Dapper read side`
+
+### Comandos de Verificação
+
+```bash
+# Build completo
+dotnet build
+
+# Rodar testes
+dotnet test tests/OrderFlow.Orders.Application.Tests --verbosity normal
+
+# Criar migration
+dotnet ef migrations add InitialOrders \
+  -p src/Services/Orders/OrderFlow.Orders.Infrastructure \
+  -s src/Services/Orders/OrderFlow.Orders.Api
+
+# Rodar API
+dotnet run --project src/Services/Orders/OrderFlow.Orders.Api
+
+# Testar endpoint (com API rodando)
+curl -X POST http://localhost:5000/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"...", "street":"Rua Teste", "number":"100", "neighborhood":"Centro", "city":"São Paulo", "state":"SP", "zipCode":"01001000"}'
+```
+
+---
+
+## 📋 Resumo de Artefatos Criados
+
+| Artefato | Arquivo/Local |
+|----------|---------------|
+| Commands | `CreateOrderCommand.cs`, `ConfirmOrderCommand.cs`, `CancelOrderCommand.cs` |
+| Queries | `GetOrderQuery.cs`, `GetOrdersByCustomerQuery.cs` |
+| Handlers | `CreateOrderHandler.cs`, `ConfirmOrderHandler.cs`, `GetOrderHandler.cs` |
+| Pipeline Behaviors | `ValidationBehavior.cs`, `LoggingBehavior.cs` |
+| Validators | `CreateOrderValidator.cs` (FluentValidation) |
+| DTOs/Responses | `OrderResponse.cs`, `OrderItemResponse.cs` |
+| Repository | `OrderRepository.cs` (EF Core), `OrderReadRepository.cs` (Dapper) |
+| Interceptor | `DomainEventInterceptor.cs` (dispatch de domain events no SaveChanges) |
+| DbContext | `OrdersDbContext.cs` + EntityTypeConfigurations |
+| Testes | `CreateOrderHandlerTests.cs`, `ValidationBehaviorTests.cs` |
+
+---
+
+## 💼 Perguntas Frequentes em Entrevistas — Fase 3
+
+**1. "O que é CQRS e quando vale a pena usar?"**
+— CQRS (Command Query Responsibility Segregation) separa modelos de leitura e escrita. **Escrita** usa EF Core com domínio rico + validações; **leitura** usa Dapper com SQL direto para performance. Vale quando: leitura e escrita têm necessidades diferentes (ex: escrita valida regras complexas, leitura precisa de joins rápidos). **Não** vale para CRUDs simples — adiciona complexidade desnecessária.
+
+**2. "Para que servem Pipeline Behaviors no MediatR?"**
+— São **middlewares** que interceptam toda request antes/depois do handler. `ValidationBehavior` roda FluentValidation automaticamente; `LoggingBehavior` loga tempo de execução. A cada novo cross-cutting concern (cache, auditoria), adicione um behavior — sem alterar handlers existentes. É o **Open/Closed Principle** na prática.
+
+**3. "Por que usar Result Pattern ao invés de lançar exceções?"**
+— Exceções são para situações **excepcionais** (banco fora, rede caiu), não para fluxo de negócio. "Pedido inválido" não é excepcional — é esperado. `Result<T>` retorna `Success(data)` ou `Failure(error)` sem custo de stack unwinding. O controller converte `Result` em HTTP status (200/400/404) de forma explícita e testável.
+
+**4. "Por que Dapper para leitura e EF Core para escrita?"**
+— **EF Core** brilha na escrita: change tracking, migrations, interceptors para domain events. **Dapper** brilha na leitura: SQL puro, sem overhead de tracking, perfeito para projeções (DTOs flat). Não é sobre "um ser melhor" — cada um no que faz melhor. Leitura com Dapper pode ser 5-10x mais rápida em cenários de reporting.
+
+**5. "Como FluentValidation se integra com MediatR?"**
+— Através do `ValidationBehavior<TRequest, TResponse>`. Ele recebe todos os `IValidator<TRequest>` via DI, executa validação **antes** do handler, e retorna `Result.Failure` se houver erros. O handler nunca recebe dados inválidos. Validators são auto-registrados via `Assembly.GetExecutingAssembly()`.
+
+---
+
+> **Próximo passo:** Avance para `fase-04-autenticacao-seguranca.md` para implementar Identity API com JWT, refresh tokens e authorization policies.

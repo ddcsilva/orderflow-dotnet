@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OrderFlow — Guia Completo de Arquitetura Enterprise .NET</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== THEME: Tech Dark (from themes.json) ===== */
+    :root {
+      --primary: #38bdf8;
+      --accent: #a78bfa;
+      --secondary: #34d399;
+      --text: #e2e8f0;
+      --background: #0a0e17;
+      --surface: #151b28;
+      --glow-primary: 0 0 20px rgba(56, 189, 248, 0.3);
+      --glow-accent: 0 0 20px rgba(167, 139, 250, 0.3);
+      --glow-secondary: 0 0 20px rgba(52, 211, 153, 0.3);
+      --border-subtle: rgba(56, 189, 248, 0.15);
+      --surface-hover: #1c2333;
+      --text-muted: #94a3b8;
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --gradient-hero: linear-gradient(135deg, #0a0e17 0%, #1a1040 50%, #0a0e17 100%);
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-code: 'JetBrains Mono', monospace;
+    }
+
+    ::selection { background: rgba(167, 139, 250, 0.3); color: #fff; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--background); }
+    ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--background);
+      color: var(--text);
+      line-height: 1.75;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== LAYOUT ===== */
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ===== HERO ===== */
+    .hero {
+      background: var(--gradient-hero);
+      padding: 4rem 2rem 3rem;
+      text-align: center;
+      border-bottom: 1px solid var(--border-subtle);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle at 30% 50%, rgba(167,139,250,0.08) 0%, transparent 50%),
+                  radial-gradient(circle at 70% 50%, rgba(56,189,248,0.06) 0%, transparent 50%);
+      animation: drift 20s ease-in-out infinite alternate;
+    }
+    @keyframes drift {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(-2%, 2%) rotate(1deg); }
+    }
+    .hero-content { position: relative; z-index: 1; }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.5rem;
+    }
+    .hero h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1rem, 2.5vw, 1.3rem);
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    .badge {
+      font-family: var(--font-code);
+      font-size: 0.7rem;
+      font-weight: 500;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(21, 27, 40, 0.8);
+      color: var(--text-muted);
+      backdrop-filter: blur(8px);
+    }
+    .badge--primary { border-color: rgba(56,189,248,0.4); color: var(--primary); }
+    .badge--accent { border-color: rgba(167,139,250,0.4); color: var(--accent); }
+    .badge--secondary { border-color: rgba(52,211,153,0.4); color: var(--secondary); }
+
+    /* ===== TYPOGRAPHY ===== */
+    h3 {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin: 3rem 0 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--border-subtle);
+    }
+    h4 {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin: 2rem 0 0.75rem;
+    }
+    p { margin-bottom: 1rem; }
+    strong { color: #fff; font-weight: 600; }
+    a { color: var(--primary); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+    a:hover { border-bottom-color: var(--primary); }
+    ul, ol { margin: 0.5rem 0 1rem 1.5rem; }
+    li { margin-bottom: 0.35rem; }
+
+    /* ===== EXECUTIVE SUMMARY (TL;DR) ===== */
+    .tldr {
+      background: linear-gradient(135deg, rgba(56,189,248,0.08), rgba(167,139,250,0.08));
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 1.5rem 2rem;
+      margin: 2rem 0;
+    }
+    .tldr-title {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--primary);
+      margin-bottom: 0.75rem;
+    }
+    .tldr ul { margin-left: 1.2rem; }
+    .tldr li { color: var(--text); margin-bottom: 0.5rem; }
+
+    /* ===== CALLOUTS ===== */
+    .callout {
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0;
+      border-left: 4px solid;
+      position: relative;
+    }
+    .callout-label {
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+    }
+    .callout--socratic {
+      background: rgba(167,139,250,0.08);
+      border-color: var(--accent);
+    }
+    .callout--socratic .callout-label { color: var(--accent); }
+    .callout--socratic .question {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #fff;
+      font-style: italic;
+      line-height: 1.5;
+    }
+    .callout--danger {
+      background: rgba(248,113,113,0.08);
+      border-color: var(--danger);
+    }
+    .callout--danger .callout-label { color: var(--danger); }
+    .callout--tip {
+      background: rgba(52,211,153,0.08);
+      border-color: var(--secondary);
+    }
+    .callout--tip .callout-label { color: var(--secondary); }
+    .callout--interview {
+      background: rgba(251,191,36,0.08);
+      border-color: var(--warning);
+    }
+    .callout--interview .callout-label { color: var(--warning); }
+    .callout--deep {
+      background: rgba(56,189,248,0.06);
+      border-color: var(--primary);
+    }
+    .callout--deep .callout-label { color: var(--primary); }
+
+    /* ===== CODE BLOCKS ===== */
+    pre {
+      background: #0d1117;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 1rem 0 1.5rem;
+      position: relative;
+    }
+    pre::before {
+      content: attr(data-lang);
+      position: absolute;
+      top: 0.5rem;
+      right: 0.75rem;
+      font-family: var(--font-code);
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.6;
+    }
+    code {
+      font-family: var(--font-code);
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    :not(pre) > code {
+      background: rgba(56,189,248,0.1);
+      color: var(--primary);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+    .kw { color: #ff79c6; }
+    .tp { color: #38bdf8; }
+    .str { color: #34d399; }
+    .cm { color: #6272a4; font-style: italic; }
+    .fn { color: #fbbf24; }
+    .num { color: #a78bfa; }
+
+    /* ===== CARDS ===== */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 1.25rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      border-color: var(--primary);
+      box-shadow: var(--glow-primary);
+    }
+    .card-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .card-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #fff;
+      margin-bottom: 0.35rem;
+    }
+    .card-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ===== TABLE ===== */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.9rem;
+    }
+    th {
+      font-family: var(--font-display);
+      font-weight: 600;
+      text-align: left;
+      padding: 0.75rem 1rem;
+      color: var(--primary);
+      background: rgba(56,189,248,0.06);
+      border-bottom: 2px solid var(--border-subtle);
+    }
+    td {
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid rgba(56,189,248,0.08);
+      vertical-align: top;
+    }
+    tr:hover td { background: rgba(56,189,248,0.03); }
+
+    /* ===== PHASE HEADER ===== */
+    .phase-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 3.5rem 0 1rem;
+      padding: 1rem 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+    }
+    .phase-number {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      min-width: 3rem;
+      text-align: center;
+    }
+    .phase-info h3 {
+      margin: 0;
+      padding: 0;
+      border: none;
+      font-size: 1.3rem;
+    }
+    .phase-info p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    /* ===== SVG DIAGRAMS ===== */
+    .diagram-container {
+      margin: 1.5rem 0;
+      overflow-x: auto;
+      text-align: center;
+    }
+    .diagram-container svg {
+      max-width: 100%;
+      height: auto;
+    }
+    .diagram-caption {
+      font-family: var(--font-code);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+
+    /* ===== ROADMAP ===== */
+    .roadmap {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.5rem;
+      margin: 1.5rem 0;
+    }
+    .roadmap-item {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 0.75rem;
+      text-align: center;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    .roadmap-item:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .roadmap-item .step {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--accent);
+    }
+    .roadmap-item .topic {
+      font-weight: 600;
+      color: #fff;
+      margin: 0.25rem 0;
+    }
+    .roadmap-item .tech {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    /* ===== SEPARATOR ===== */
+    .sep {
+      border: none;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
+      margin: 3rem 0;
+    }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .footer strong {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 600px) {
+      .container { padding: 1rem; }
+      .hero { padding: 2.5rem 1rem 2rem; }
+      .phase-header { flex-direction: column; text-align: center; }
+      .card-grid { grid-template-columns: 1fr; }
+      .roadmap { grid-template-columns: repeat(2, 1fr); }
+      pre { padding: 1rem; }
+      table { font-size: 0.8rem; }
+      th, td { padding: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HERO                                                         -->
+<!-- ============================================================ -->
+<header class="hero">
+  <div class="hero-content">
+    <h1>🛒 OrderFlow</h1>
+    <h2>Guia Completo de Arquitetura Enterprise .NET 10</h2>
+    <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto 1.5rem; font-size: 0.95rem;">
+      Da fundação ao deploy em cloud — cada decisão explicada, cada padrão justificado.
+    </p>
+    <div class="badges">
+      <span class="badge badge--primary">.NET 10</span>
+      <span class="badge badge--primary">C# 13</span>
+      <span class="badge badge--accent">Clean Architecture</span>
+      <span class="badge badge--accent">DDD</span>
+      <span class="badge badge--accent">CQRS</span>
+      <span class="badge badge--secondary">RabbitMQ</span>
+      <span class="badge badge--secondary">Redis</span>
+      <span class="badge">Docker</span>
+      <span class="badge">Azure</span>
+      <span class="badge">GitHub Actions</span>
+    </div>
+  </div>
+</header>
+
+<article class="container">
+
+  <!-- ============================================================ -->
+  <!-- TL;DR                                                        -->
+  <!-- ============================================================ -->
+  <div class="tldr">
+    <div class="tldr-title">⚡ TL;DR — O que é o OrderFlow?</div>
+    <ul>
+      <li><strong>4 microserviços</strong> + API Gateway + Worker — cada um com banco próprio</li>
+      <li><strong>Clean Architecture</strong> com Domain-Driven Design no serviço de referência (Orders)</li>
+      <li><strong>CQRS</strong> com MediatR (escrita EF Core, leitura Dapper)</li>
+      <li><strong>Mensageria assíncrona</strong> com RabbitMQ + MassTransit + Outbox Pattern</li>
+      <li><strong>Observabilidade completa</strong> — Serilog, OpenTelemetry, Health Checks, Grafana</li>
+      <li><strong>CI/CD</strong> com GitHub Actions + deploy Azure Container Apps via Bicep</li>
+      <li>Cada decisão mapeada a um <strong>tópico de vaga enterprise .NET</strong></li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ROADMAP VISUAL                                               -->
+  <!-- ============================================================ -->
+  <h3>🗺️ Jornada de Aprendizado</h3>
+  <p>O OrderFlow é construído em 8 fases progressivas. Cada fase adiciona uma camada arquitetural ao sistema.</p>
+
+  <div class="roadmap">
+    <div class="roadmap-item">
+      <div class="step">01</div>
+      <div class="topic">Fundação</div>
+      <div class="tech">Clean Arch · EF Core · Docker</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="step">02</div>
+      <div class="topic">DDD</div>
+      <div class="tech">Aggregates · VOs · Events</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="step">03</div>
+      <div class="topic">CQRS</div>
+      <div class="tech">MediatR · Dapper · Pipelines</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="step">04</div>
+      <div class="topic">Auth</div>
+      <div class="tech">JWT · Refresh · Policies</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="step">05</div>
+      <div class="topic">Mensageria</div>
+      <div class="tech">RabbitMQ · Outbox · DLQ</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="step">06</div>
+      <div class="topic">Observability</div>
+      <div class="tech">Redis · OTel · Serilog</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="step">07</div>
+      <div class="topic">Gateway</div>
+      <div class="tech">YARP · Docker · Testcontainers</div>
+    </div>
+    <div class="roadmap-item">
+      <div class="step">08</div>
+      <div class="topic">CI/CD</div>
+      <div class="tech">Actions · Azure · Bicep</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ARCHITECTURE OVERVIEW SVG                                    -->
+  <!-- ============================================================ -->
+  <h3>🏗️ Visão Arquitetural</h3>
+
+  <div class="callout callout--socratic">
+    <div class="callout-label">🤔 Pergunta Socrática</div>
+    <p class="question">"Se cada serviço tem seu próprio banco de dados e nunca chama outro diretamente… como eles se comunicam?"</p>
+  </div>
+
+  <p>Através de <strong>eventos assíncronos</strong>. Quando um pedido é criado no Orders API, um evento é publicado no RabbitMQ. O Notification Worker consome esse evento sem que o Orders API saiba — ou se importe — com o que acontece depois.</p>
+
+  <div class="diagram-container">
+    <svg viewBox="0 0 720 480" xmlns="http://www.w3.org/2000/svg" style="max-width: 700px;">
+      <!-- Background -->
+      <rect width="720" height="480" fill="#0d1117" rx="12"/>
+
+      <!-- Client -->
+      <rect x="290" y="15" width="140" height="40" rx="8" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="360" y="40" text-anchor="middle" fill="#e2e8f0" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="600">Cliente HTTP</text>
+
+      <!-- Arrow down -->
+      <line x1="360" y1="55" x2="360" y2="80" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+
+      <!-- Gateway -->
+      <rect x="260" y="80" width="200" height="50" rx="10" fill="rgba(56,189,248,0.1)" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="360" y="102" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk, sans-serif" font-size="14" font-weight="700">API Gateway (YARP)</text>
+      <text x="360" y="120" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">Routing · Rate Limit · Auth Fwd</text>
+
+      <!-- Arrows to 3 APIs -->
+      <line x1="300" y1="130" x2="140" y2="175" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4" marker-end="url(#arrowBlue)"/>
+      <line x1="360" y1="130" x2="360" y2="175" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4" marker-end="url(#arrowBlue)"/>
+      <line x1="420" y1="130" x2="580" y2="175" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4" marker-end="url(#arrowBlue)"/>
+
+      <!-- Identity API -->
+      <rect x="50" y="175" width="180" height="70" rx="10" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="140" y="198" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="700">Identity API</text>
+      <text x="140" y="215" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">JWT + Refresh Tokens</text>
+      <rect x="95" y="228" width="90" height="14" rx="3" fill="rgba(167,139,250,0.15)"/>
+      <text x="140" y="239" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono, monospace" font-size="8">SQL Server</text>
+
+      <!-- Catalog API -->
+      <rect x="270" y="175" width="180" height="70" rx="10" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="360" y="198" text-anchor="middle" fill="#34d399" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="700">Catalog API</text>
+      <text x="360" y="215" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">Cache-Aside · Controllers</text>
+      <rect x="315" y="228" width="90" height="14" rx="3" fill="rgba(52,211,153,0.15)"/>
+      <text x="360" y="239" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="8">SQL + Redis</text>
+
+      <!-- Orders API -->
+      <rect x="490" y="175" width="180" height="70" rx="10" fill="rgba(56,189,248,0.1)" stroke="#38bdf8" stroke-width="2"/>
+      <text x="580" y="198" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="700">⭐ Orders API</text>
+      <text x="580" y="215" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">CQRS · DDD · Outbox</text>
+      <rect x="535" y="228" width="90" height="14" rx="3" fill="rgba(56,189,248,0.12)"/>
+      <text x="580" y="239" text-anchor="middle" fill="#38bdf8" font-family="JetBrains Mono, monospace" font-size="8">SQL Server</text>
+
+      <!-- Arrow Orders -> RabbitMQ -->
+      <line x1="580" y1="245" x2="580" y2="305" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowYellow)"/>
+      <text x="598" y="280" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="8" transform="rotate(-90, 598, 280)">Outbox</text>
+
+      <!-- RabbitMQ -->
+      <rect x="480" y="305" width="200" height="50" rx="10" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="580" y="328" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">🐇 RabbitMQ</text>
+      <text x="580" y="345" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">MassTransit · DLQ · Retry</text>
+
+      <!-- Arrow to Worker -->
+      <line x1="580" y1="355" x2="580" y2="395" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowYellow)"/>
+
+      <!-- Notification Worker -->
+      <rect x="480" y="395" width="200" height="50" rx="10" fill="rgba(248,113,113,0.08)" stroke="#f87171" stroke-width="1.5"/>
+      <text x="580" y="418" text-anchor="middle" fill="#f87171" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="700">Notification Worker</text>
+      <text x="580" y="435" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">Consumers · Idempotência</text>
+
+      <!-- Infra bar -->
+      <rect x="40" y="400" width="400" height="55" rx="10" fill="rgba(56,189,248,0.04)" stroke="rgba(56,189,248,0.1)" stroke-width="1" stroke-dasharray="4"/>
+      <text x="240" y="420" text-anchor="middle" fill="#94a3b8" font-family="Space Grotesk, sans-serif" font-size="10" font-weight="600">INFRAESTRUTURA TRANSVERSAL</text>
+      <text x="240" y="440" text-anchor="middle" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="9">Redis · Serilog · Seq · OpenTelemetry · Health Checks · Docker Compose</text>
+
+      <!-- Arrow markers -->
+      <defs>
+        <marker id="arrowBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" fill="#38bdf8">
+          <polygon points="0 0, 8 3, 0 6"/>
+        </marker>
+        <marker id="arrowYellow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" fill="#fbbf24">
+          <polygon points="0 0, 8 3, 0 6"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="diagram-caption">Diagrama de alto nível — OrderFlow Microservices</div>
+  </div>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 1                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">01</div>
+      <div class="phase-info">
+        <h3>Fundação e Estrutura</h3>
+        <p>Clean Architecture · SharedKernel · EF Core · Docker Compose</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"Como organizar um sistema para que trocar o ORM nunca quebre regras de negócio?"</p>
+    </div>
+
+    <p>A resposta é a <strong>Dependency Rule</strong> da Clean Architecture: camadas internas <em>nunca</em> conhecem as externas. O Domain não sabe que EF Core existe. Se amanhã trocarmos para Dapper ou um banco NoSQL, o Domain continua intacto.</p>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" style="max-width: 400px;">
+        <rect width="400" height="240" fill="#0d1117" rx="10"/>
+        <!-- Outer: API -->
+        <rect x="30" y="20" width="340" height="200" rx="12" fill="rgba(248,113,113,0.06)" stroke="#f87171" stroke-width="1"/>
+        <text x="200" y="40" text-anchor="middle" fill="#f87171" font-family="Space Grotesk" font-size="10" font-weight="600">API (Composition Root)</text>
+        <!-- Infrastructure -->
+        <rect x="60" y="50" width="280" height="155" rx="10" fill="rgba(251,191,36,0.06)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="200" y="68" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk" font-size="10" font-weight="600">Infrastructure (EF Core, Redis, MassTransit)</text>
+        <!-- Application -->
+        <rect x="90" y="78" width="220" height="112" rx="8" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="200" y="96" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk" font-size="10" font-weight="600">Application (Commands, Queries, DTOs)</text>
+        <!-- Domain -->
+        <rect x="120" y="106" width="160" height="68" rx="8" fill="rgba(52,211,153,0.12)" stroke="#34d399" stroke-width="2"/>
+        <text x="200" y="130" text-anchor="middle" fill="#34d399" font-family="Space Grotesk" font-size="12" font-weight="700">Domain</text>
+        <text x="200" y="148" text-anchor="middle" fill="#94a3b8" font-family="Inter" font-size="9">Entities · VOs · Events</text>
+        <text x="200" y="162" text-anchor="middle" fill="#94a3b8" font-family="Inter" font-size="9">ZERO dependências externas</text>
+      </svg>
+      <div class="diagram-caption">Clean Architecture — as setas apontam para dentro</div>
+    </div>
+
+    <h4>Conceitos-Chave</h4>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📦</div>
+        <div class="card-title">Central Package Management</div>
+        <div class="card-desc"><code>Directory.Packages.props</code> centraliza versões NuGet. Sem "funciona no meu PC".</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <div class="card-title">Structured Logging</div>
+        <div class="card-desc">Serilog com propriedades tipadas. Pesquise por <code>{OrderId}</code>, não por regex.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🐳</div>
+        <div class="card-title">SQL Server em Docker</div>
+        <div class="card-desc">Dev idêntico à produção. Sem SQLite que esconde bugs de migration.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">❤️</div>
+        <div class="card-title">Health Checks</div>
+        <div class="card-desc">Liveness (vivo?) + Readiness (pronto?). Kubernetes sabe quando reiniciar vs. remover do tráfego.</div>
+      </div>
+    </div>
+
+    <pre data-lang="xml"><code><span class="cm">&lt;!-- Directory.Packages.props — Uma única fonte de verdade --&gt;</span>
+<span class="kw">&lt;Project&gt;</span>
+  <span class="kw">&lt;PropertyGroup&gt;</span>
+    <span class="kw">&lt;ManagePackageVersionsCentrally&gt;</span><span class="str">true</span><span class="kw">&lt;/ManagePackageVersionsCentrally&gt;</span>
+  <span class="kw">&lt;/PropertyGroup&gt;</span>
+  <span class="kw">&lt;ItemGroup&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="tp">Include</span>=<span class="str">"Serilog.AspNetCore"</span> <span class="tp">Version</span>=<span class="str">"9.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="tp">Include</span>=<span class="str">"Microsoft.EntityFrameworkCore"</span> <span class="tp">Version</span>=<span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+  <span class="kw">&lt;/ItemGroup&gt;</span>
+<span class="kw">&lt;/Project&gt;</span></code></pre>
+
+    <div class="callout callout--danger">
+      <div class="callout-label">⚠️ Anti-Padrão</div>
+      <p><strong>Múltiplas versões do mesmo pacote</strong> entre projetos. Sem Central Package Management, o Identity usa EF Core 10.0.0 e o Orders usa 10.0.1 — bugs sutis em migrations que só aparecem em CI.</p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 2                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">02</div>
+      <div class="phase-info">
+        <h3>Domínio Rico e DDD</h3>
+        <p>Aggregates · Value Objects · Domain Events · State Machine</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"Por que um OrderItem nunca deveria existir sem uma Order?"</p>
+    </div>
+
+    <p>Porque <strong>Order é o Aggregate Root</strong> — a guardiã das invariantes. Se alguém adicionasse um <code>OrderItem</code> diretamente, poderia criar um item sem atualizar o total do pedido. O aggregate garante que <em>toda</em> mudança passa por regras de negócio.</p>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 520 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 520px;">
+        <rect width="520" height="280" fill="#0d1117" rx="10"/>
+        <!-- Aggregate boundary -->
+        <rect x="20" y="20" width="310" height="240" rx="14" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="6"/>
+        <text x="175" y="44" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk" font-size="11" font-weight="700">AGGREGATE BOUNDARY</text>
+        <!-- Order (root) -->
+        <rect x="50" y="58" width="250" height="55" rx="8" fill="rgba(56,189,248,0.12)" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="175" y="80" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk" font-size="13" font-weight="700">🔑 Order (Aggregate Root)</text>
+        <text x="175" y="100" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="9">AddItem() · Confirm() · Cancel() · Ship()</text>
+        <!-- OrderItem -->
+        <rect x="60" y="130" width="120" height="45" rx="6" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="120" y="150" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk" font-size="10" font-weight="600">OrderItem</text>
+        <text x="120" y="165" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="8">Entity interna</text>
+        <!-- OrderItem 2 -->
+        <rect x="190" y="130" width="120" height="45" rx="6" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="250" y="150" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk" font-size="10" font-weight="600">OrderItem</text>
+        <text x="250" y="165" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="8">Entity interna</text>
+        <!-- Value Objects -->
+        <rect x="50" y="192" width="80" height="32" rx="6" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="90" y="212" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">Money</text>
+        <rect x="140" y="192" width="80" height="32" rx="6" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="180" y="212" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">Address</text>
+        <rect x="230" y="192" width="80" height="32" rx="6" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="270" y="212" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">OrderStatus</text>
+        <text x="175" y="244" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="9">Value Objects — imutáveis, sem identidade</text>
+        <!-- External events -->
+        <rect x="360" y="60" width="140" height="110" rx="8" fill="rgba(251,191,36,0.06)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="430" y="82" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk" font-size="10" font-weight="600">Domain Events</text>
+        <text x="430" y="102" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">OrderCreated</text>
+        <text x="430" y="118" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">OrderConfirmed</text>
+        <text x="430" y="134" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">OrderCancelled</text>
+        <text x="430" y="158" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="8">Dispatchados no</text>
+        <text x="430" y="168" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="8">SaveChanges()</text>
+        <!-- Arrow -->
+        <line x1="300" y1="85" x2="358" y2="85" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4" marker-end="url(#arrowYellow2)"/>
+        <defs>
+          <marker id="arrowYellow2" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto" fill="#fbbf24"><polygon points="0 0, 6 2.5, 0 5"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">Aggregate Order — tudo dentro da fronteira é atômico</div>
+    </div>
+
+    <pre data-lang="C#"><code><span class="cm">// Rich Domain Model — comportamento encapsulado no aggregate</span>
+<span class="kw">public sealed class</span> <span class="tp">Order</span> : <span class="tp">AggregateRoot</span>
+{
+    <span class="kw">private readonly</span> List&lt;<span class="tp">OrderItem</span>&gt; <span class="fn">_items</span> = [];
+
+    <span class="kw">public void</span> <span class="fn">AddItem</span>(<span class="tp">Guid</span> productId, <span class="tp">Money</span> unitPrice, <span class="kw">int</span> quantity)
+    {
+        <span class="kw">if</span> (_status != <span class="tp">OrderStatus</span>.Pending)
+            <span class="kw">throw new</span> <span class="tp">OrderDomainException</span>(<span class="str">"Can only add items to pending orders."</span>);
+
+        _items.Add(<span class="tp">OrderItem</span>.<span class="fn">Create</span>(Id, productId, unitPrice, quantity));
+        <span class="fn">AddDomainEvent</span>(<span class="kw">new</span> <span class="tp">OrderItemAddedDomainEvent</span>(Id, productId, quantity));
+    }
+}</code></pre>
+
+    <div class="callout callout--interview">
+      <div class="callout-label">💼 Na Entrevista</div>
+      <p><strong>"Qual a diferença entre Entity e Value Object?"</strong></p>
+      <p><strong>Entity</strong> tem identidade (<code>Id</code>) — duas entidades com mesmos dados mas IDs diferentes são objetos diferentes. <strong>Value Object</strong> é definido por seus atributos — dois <code>Money(100, "BRL")</code> são iguais, não importa onde estão. Consequência: Value Objects são <em>imutáveis</em>.</p>
+    </div>
+
+    <div class="callout callout--danger">
+      <div class="callout-label">⚠️ Anti-Padrão — Anemic Domain Model</div>
+      <p><code>Order</code> é só um saco de dados com getters/setters públicos. Toda lógica fica em <code>OrderService</code>. Resultado: invariantes violadas, <code>OrderItem</code> criado sem atualizar total, status muda sem validação. <strong>Se a entidade não protege a si mesma, ninguém protege.</strong></p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 3                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">03</div>
+      <div class="phase-info">
+        <h3>CQRS com MediatR</h3>
+        <p>Commands · Queries · Pipeline Behaviors · Dapper · Result Pattern</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"A query que carrega um relatório precisa passar pela mesma validação complexa que cria um pedido?"</p>
+    </div>
+
+    <p>Não. E é exatamente isso que CQRS resolve: <strong>leitura e escrita têm necessidades diferentes</strong>. Escrita precisa de domínio rico, validação, transação. Leitura precisa de velocidade e projeções planas. No OrderFlow, escrita usa EF Core; leitura usa Dapper com SQL direto.</p>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 600 260" xmlns="http://www.w3.org/2000/svg" style="max-width: 600px;">
+        <rect width="600" height="260" fill="#0d1117" rx="10"/>
+        <!-- MediatR -->
+        <rect x="215" y="15" width="170" height="35" rx="8" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="300" y="37" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk" font-size="12" font-weight="700">MediatR.Send()</text>
+        <!-- Split arrows -->
+        <line x1="260" y1="50" x2="150" y2="80" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#aB3)"/>
+        <line x1="340" y1="50" x2="450" y2="80" stroke="#34d399" stroke-width="1.5" marker-end="url(#aG3)"/>
+        <!-- Command side -->
+        <rect x="30" y="80" width="240" height="160" rx="10" fill="rgba(56,189,248,0.05)" stroke="#38bdf8" stroke-width="1"/>
+        <text x="150" y="100" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk" font-size="11" font-weight="700">COMMAND (Escrita)</text>
+        <rect x="50" y="110" width="200" height="24" rx="4" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="0.5"/>
+        <text x="150" y="126" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9">ValidationBehavior</text>
+        <rect x="50" y="138" width="200" height="24" rx="4" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="0.5"/>
+        <text x="150" y="154" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9">LoggingBehavior</text>
+        <rect x="50" y="166" width="200" height="24" rx="4" fill="rgba(248,113,113,0.08)" stroke="#f87171" stroke-width="0.5"/>
+        <text x="150" y="182" text-anchor="middle" fill="#f87171" font-family="JetBrains Mono" font-size="9">TransactionBehavior</text>
+        <rect x="50" y="198" width="200" height="30" rx="6" fill="rgba(56,189,248,0.1)" stroke="#38bdf8" stroke-width="1"/>
+        <text x="150" y="218" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk" font-size="10" font-weight="600">Handler → EF Core</text>
+        <!-- Query side -->
+        <rect x="330" y="80" width="240" height="160" rx="10" fill="rgba(52,211,153,0.05)" stroke="#34d399" stroke-width="1"/>
+        <text x="450" y="100" text-anchor="middle" fill="#34d399" font-family="Space Grotesk" font-size="11" font-weight="700">QUERY (Leitura)</text>
+        <rect x="350" y="118" width="200" height="24" rx="4" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="0.5"/>
+        <text x="450" y="134" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9">LoggingBehavior</text>
+        <rect x="350" y="178" width="200" height="30" rx="6" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="450" y="198" text-anchor="middle" fill="#34d399" font-family="Space Grotesk" font-size="10" font-weight="600">Handler → Dapper</text>
+        <text x="450" y="154" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="9">Sem validação, sem transação</text>
+        <defs>
+          <marker id="aB3" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto" fill="#38bdf8"><polygon points="0 0,7 2.5,0 5"/></marker>
+          <marker id="aG3" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto" fill="#34d399"><polygon points="0 0,7 2.5,0 5"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">CQRS — pipelines diferentes por tipo de operação</div>
+    </div>
+
+    <pre data-lang="C#"><code><span class="cm">// Pipeline Behavior — valida ANTES de abrir transação</span>
+<span class="kw">public class</span> <span class="tp">ValidationBehavior</span>&lt;<span class="tp">TRequest</span>, <span class="tp">TResponse</span>&gt;
+    : <span class="tp">IPipelineBehavior</span>&lt;<span class="tp">TRequest</span>, <span class="tp">TResponse</span>&gt;
+{
+    <span class="kw">public async</span> Task&lt;<span class="tp">TResponse</span>&gt; <span class="fn">Handle</span>(
+        <span class="tp">TRequest</span> request, <span class="tp">CancellationToken</span> ct,
+        <span class="tp">RequestHandlerDelegate</span>&lt;<span class="tp">TResponse</span>&gt; next)
+    {
+        <span class="kw">var</span> result = <span class="kw">await</span> _validator.<span class="fn">ValidateAsync</span>(request, ct);
+
+        <span class="kw">if</span> (!result.IsValid)
+            <span class="kw">return</span> (<span class="tp">TResponse</span>)(<span class="kw">object</span>)<span class="tp">Result</span>.<span class="fn">Failure</span>(result.Errors[<span class="num">0</span>].ErrorMessage);
+
+        <span class="kw">return await</span> <span class="fn">next</span>();  <span class="cm">// handler nunca recebe dados inválidos</span>
+    }
+}</code></pre>
+
+    <div class="callout callout--tip">
+      <div class="callout-label">💡 Result Pattern &gt; Exceptions</div>
+      <p>"Pedido não encontrado" <strong>não é excepcional</strong> — é esperado. <code>Result&lt;T&gt;</code> retorna <code>Success(data)</code> ou <code>Failure(error)</code> sem custo de stack unwinding. Exceções são para situações <em>realmente</em> excepcionais (banco fora, rede caiu).</p>
+    </div>
+
+    <div class="callout callout--deep">
+      <div class="callout-label">🔬 Deep Dive — Sênior</div>
+      <p><strong>Por que Dapper é mais rápido?</strong> EF Core faz change tracking: mantém snapshot de cada entidade carregada para detectar mudanças no <code>SaveChanges()</code>. Para leitura, isso é custo puro — você não vai salvar nada. Dapper executa SQL e materializa DTOs sem overhead. Em cenários de reporting, a diferença pode ser <strong>5-10x</strong>.</p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 4                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">04</div>
+      <div class="phase-info">
+        <h3>Autenticação e Segurança</h3>
+        <p>JWT Bearer · Refresh Token Rotation · Authorization Policies · Rate Limiting</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"Se JWT é stateless e o servidor não armazena nada… como revogar o acesso de um usuário demitido?"</p>
+    </div>
+
+    <p>Você <strong>não revoga o JWT diretamente</strong> — ele expira em 15 minutos. O que você revoga é o <strong>Refresh Token</strong>. Sem refresh, o access token morre sozinho. E com <strong>Refresh Token Rotation</strong>, cada uso gera um novo par — se um token roubado for detectado (reuse), toda a família é revogada.</p>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 580 200" xmlns="http://www.w3.org/2000/svg" style="max-width: 580px;">
+        <rect width="580" height="200" fill="#0d1117" rx="10"/>
+        <!-- Timeline -->
+        <line x1="40" y1="100" x2="540" y2="100" stroke="#94a3b8" stroke-width="1"/>
+        <!-- Access Token -->
+        <rect x="50" y="55" width="130" height="30" rx="6" fill="rgba(56,189,248,0.15)" stroke="#38bdf8" stroke-width="1"/>
+        <text x="115" y="74" text-anchor="middle" fill="#38bdf8" font-family="JetBrains Mono" font-size="9">Access Token #1</text>
+        <text x="115" y="50" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="8">15 min</text>
+        <!-- Refresh -->
+        <rect x="50" y="115" width="350" height="26" rx="6" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="225" y="132" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">Refresh Token #1 (7 dias)</text>
+        <!-- Rotation point -->
+        <circle cx="185" cy="100" r="6" fill="#fbbf24"/>
+        <text x="185" y="88" text-anchor="middle" fill="#fbbf24" font-family="Inter" font-size="8" font-weight="600">Rotation</text>
+        <!-- New Access -->
+        <rect x="200" y="55" width="130" height="30" rx="6" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="265" y="74" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9">Access Token #2</text>
+        <!-- New Refresh -->
+        <rect x="200" y="145" width="330" height="26" rx="6" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4"/>
+        <text x="365" y="162" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9">Refresh Token #2 (novo, #1 revogado)</text>
+        <!-- Reuse detection -->
+        <rect x="410" y="60" width="120" height="30" rx="6" fill="rgba(248,113,113,0.15)" stroke="#f87171" stroke-width="1.5"/>
+        <text x="470" y="79" text-anchor="middle" fill="#f87171" font-family="Space Grotesk" font-size="9" font-weight="700">🚨 Reuse #1 = REVOKE ALL</text>
+      </svg>
+      <div class="diagram-caption">Refresh Token Rotation — cada uso gera novo par</div>
+    </div>
+
+    <pre data-lang="C#"><code><span class="cm">// Refresh Token com detecção de roubo</span>
+<span class="kw">public class</span> <span class="tp">RefreshToken</span>
+{
+    <span class="kw">public string</span> Token { <span class="kw">get</span>; <span class="kw">init</span>; }
+    <span class="kw">public</span> <span class="tp">DateTime</span> ExpiresAt { <span class="kw">get</span>; <span class="kw">init</span>; }
+    <span class="kw">public</span> <span class="tp">DateTime</span>? RevokedAt { <span class="kw">get</span>; <span class="kw">set</span>; }
+    <span class="kw">public string</span>? ReplacedByToken { <span class="kw">get</span>; <span class="kw">set</span>; }
+
+    <span class="kw">public bool</span> IsActive =&gt; RevokedAt == <span class="kw">null</span> &amp;&amp; ExpiresAt &gt; <span class="tp">DateTime</span>.UtcNow;
+}
+
+<span class="cm">// Se alguém tenta usar token já revogado → theft detected</span>
+<span class="cm">// Revoga TODA a família de tokens do usuário</span></code></pre>
+
+    <div class="callout callout--interview">
+      <div class="callout-label">💼 Na Entrevista</div>
+      <p><strong>"JWT vs Sessions — quando usar cada?"</strong></p>
+      <p><strong>JWT</strong>: stateless, escala horizontal sem shared state, ideal para APIs com múltiplos clients. <strong>Sessions</strong>: stateful, revogação instantânea, precisa de Redis/banco. <em>No OrderFlow usamos JWT + Refresh para ter o melhor dos dois mundos.</em></p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 5                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">05</div>
+      <div class="phase-info">
+        <h3>Mensageria Assíncrona</h3>
+        <p>RabbitMQ · MassTransit · Outbox Pattern · Consumers Idempotentes · DLQ</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"O banco salvou o pedido com sucesso. Mas o RabbitMQ estava fora do ar naquele segundo. O evento se perdeu para sempre?"</p>
+    </div>
+
+    <p><strong>Não, se você usar Outbox Pattern.</strong> Em vez de publicar o evento diretamente no broker, o evento é salvo na <em>mesma transação</em> que os dados do pedido. Um Background Service lê a tabela <code>OutboxMessages</code> e publica periodicamente. Se o broker falhar, a mensagem fica na tabela e tenta de novo.</p>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 600 240" xmlns="http://www.w3.org/2000/svg" style="max-width: 600px;">
+        <rect width="600" height="240" fill="#0d1117" rx="10"/>
+        <!-- Transaction box -->
+        <rect x="20" y="20" width="260" height="120" rx="10" fill="rgba(52,211,153,0.06)" stroke="#34d399" stroke-width="2"/>
+        <text x="150" y="42" text-anchor="middle" fill="#34d399" font-family="Space Grotesk" font-size="10" font-weight="700">🔒 MESMA TRANSAÇÃO</text>
+        <rect x="40" y="52" width="220" height="28" rx="5" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="0.8"/>
+        <text x="150" y="70" text-anchor="middle" fill="#38bdf8" font-family="JetBrains Mono" font-size="9">INSERT INTO Orders (...)</text>
+        <rect x="40" y="86" width="220" height="28" rx="5" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="0.8"/>
+        <text x="150" y="104" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9">INSERT INTO OutboxMessages (...)</text>
+        <text x="150" y="130" text-anchor="middle" fill="#34d399" font-family="Space Grotesk" font-size="9" font-weight="600">COMMIT — ambos salvos ou nenhum</text>
+        <!-- Background job -->
+        <rect x="20" y="160" width="260" height="60" rx="8" fill="rgba(167,139,250,0.06)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="150" y="182" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk" font-size="10" font-weight="600">⏱️ Background Service</text>
+        <text x="150" y="200" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">SELECT WHERE ProcessedAt IS NULL</text>
+        <!-- Arrow to RabbitMQ -->
+        <line x1="280" y1="190" x2="340" y2="190" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#aY5)"/>
+        <!-- RabbitMQ -->
+        <rect x="340" y="20" width="230" height="70" rx="10" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="455" y="46" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk" font-size="12" font-weight="700">🐇 RabbitMQ</text>
+        <text x="455" y="66" text-anchor="middle" fill="#94a3b8" font-family="Inter" font-size="9">Retry (1s→2s→4s→8s) + DLQ</text>
+        <!-- Consumer -->
+        <rect x="340" y="110" width="230" height="70" rx="10" fill="rgba(56,189,248,0.06)" stroke="#38bdf8" stroke-width="1"/>
+        <text x="455" y="136" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk" font-size="10" font-weight="600">Consumer (Idempotente)</text>
+        <text x="455" y="158" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">if (Processed(msgId)) return;</text>
+        <line x1="455" y1="90" x2="455" y2="110" stroke="#fbbf24" stroke-width="1" marker-end="url(#aY5)"/>
+        <!-- DLQ -->
+        <rect x="395" y="200" width="160" height="30" rx="6" fill="rgba(248,113,113,0.08)" stroke="#f87171" stroke-width="1"/>
+        <text x="475" y="219" text-anchor="middle" fill="#f87171" font-family="JetBrains Mono" font-size="8">☠️ Dead Letter Queue</text>
+        <line x1="520" y1="180" x2="520" y2="200" stroke="#f87171" stroke-width="1" stroke-dasharray="3" marker-end="url(#aR5)"/>
+        <text x="536" y="194" fill="#64748b" font-family="Inter" font-size="7">falhou 5x</text>
+        <defs>
+          <marker id="aY5" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto" fill="#fbbf24"><polygon points="0 0,7 2.5,0 5"/></marker>
+          <marker id="aR5" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto" fill="#f87171"><polygon points="0 0,7 2.5,0 5"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">Outbox Pattern — evento nunca se perde</div>
+    </div>
+
+    <pre data-lang="C#"><code><span class="cm">// Consumer Idempotente — at-least-once exige deduplicação</span>
+<span class="kw">public class</span> <span class="tp">OrderCreatedConsumer</span> : <span class="tp">IConsumer</span>&lt;<span class="tp">OrderCreated</span>&gt;
+{
+    <span class="kw">public async</span> Task <span class="fn">Consume</span>(<span class="tp">ConsumeContext</span>&lt;<span class="tp">OrderCreated</span>&gt; ctx)
+    {
+        <span class="kw">var</span> msgId = ctx.MessageId.Value;
+
+        <span class="cm">// Já processou? Ignora (idempotência)</span>
+        <span class="kw">if</span> (<span class="kw">await</span> _db.<span class="fn">IsProcessed</span>(msgId))
+            <span class="kw">return</span>;
+
+        <span class="cm">// Processa + marca como processado em transação</span>
+        <span class="kw">await</span> <span class="fn">SendNotification</span>(ctx.Message);
+        <span class="kw">await</span> _db.<span class="fn">MarkProcessed</span>(msgId);
+    }
+}</code></pre>
+
+    <div class="callout callout--interview">
+      <div class="callout-label">💼 Na Entrevista</div>
+      <p><strong>"Qual a diferença entre Domain Event e Integration Event?"</strong></p>
+      <p><strong>Domain Event</strong> é local (in-process, via MediatR) — <code>OrderCreatedDomainEvent</code> dispara handlers no mesmo serviço. <strong>Integration Event</strong> cruza fronteiras (inter-process, via RabbitMQ) — <code>OrderCreated</code> vai para outros serviços. Domain Events são síncronos; Integration Events são assíncronos.</p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 6                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">06</div>
+      <div class="phase-info">
+        <h3>Cache e Observabilidade</h3>
+        <p>Redis Cache-Aside · Output Caching · OpenTelemetry · Serilog · Health Checks</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"Como saber se seu cache está realmente ajudando — ou só consumindo memória?"</p>
+    </div>
+
+    <p>Medindo. O <strong>Cache Hit Ratio</strong> é a métrica fundamental:</p>
+
+    <div class="callout callout--tip" style="text-align: center; font-family: var(--font-code);">
+      <div class="callout-label" style="text-align: left;">📐 Fórmula</div>
+      <p style="font-size: 1.1rem; color: var(--primary); margin: 0.5rem 0;">
+        Hit Ratio = Hits / (Hits + Misses) × 100%
+      </p>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Alvo saudável: <strong style="color: var(--secondary);">&gt; 80%</strong> em endpoints de leitura frequente</p>
+    </div>
+
+    <pre data-lang="C#"><code><span class="cm">// Decorator Pattern — Cache sem poluir o serviço original</span>
+<span class="kw">public sealed class</span> <span class="tp">CachedProductService</span> : <span class="tp">IProductService</span>
+{
+    <span class="kw">private readonly</span> <span class="tp">IProductService</span> _inner;
+    <span class="kw">private readonly</span> <span class="tp">IDistributedCache</span> _cache;
+
+    <span class="kw">public async</span> Task&lt;<span class="tp">Product</span>&gt; <span class="fn">GetById</span>(<span class="tp">Guid</span> id)
+    {
+        <span class="kw">var</span> key = <span class="str">$"product:{id}"</span>;
+        <span class="kw">var</span> cached = <span class="kw">await</span> _cache.<span class="fn">GetAsync</span>(key);
+
+        <span class="kw">if</span> (cached <span class="kw">is not null</span>)
+            <span class="kw">return</span> <span class="tp">JsonSerializer</span>.<span class="fn">Deserialize</span>&lt;<span class="tp">Product</span>&gt;(cached)!; <span class="cm">// HIT</span>
+
+        <span class="kw">var</span> product = <span class="kw">await</span> _inner.<span class="fn">GetById</span>(id); <span class="cm">// MISS → busca no banco</span>
+        <span class="kw">await</span> _cache.<span class="fn">SetAsync</span>(key, ..., <span class="kw">new</span> { AbsoluteExpiration = <span class="num">5</span>.Minutes() });
+        <span class="kw">return</span> product;
+    }
+}</code></pre>
+
+    <h4>Os 3 Pilares da Observabilidade</h4>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <div class="card-title">Metrics (O quê)</div>
+        <div class="card-desc">Contadores, gauges, histogramas. "Quantos pedidos/min?" "Cache hit ratio?" <strong>Prometheus → Grafana.</strong></div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔗</div>
+        <div class="card-title">Traces (Onde)</div>
+        <div class="card-desc">TraceId propaga entre serviços. "Orders API (200ms) → RabbitMQ (50ms) → Worker (100ms) = 350ms total." <strong>OpenTelemetry → Jaeger.</strong></div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📝</div>
+        <div class="card-title">Logs (Por quê)</div>
+        <div class="card-desc">Structured com Serilog. <code>Log.Information("Order {OrderId} created", id)</code> — pesquisável por propriedade no <strong>Seq</strong>.</div>
+      </div>
+    </div>
+
+    <div class="callout callout--danger">
+      <div class="callout-label">⚠️ Anti-Padrão</div>
+      <p><strong>Cache sem TTL.</strong> Dados obsoletos ficam no Redis indefinidamente. O produto muda de preço no banco mas o cache serve o preço antigo por horas. <em>Sempre</em> defina TTL + invalidação por eventos.</p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 7                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">07</div>
+      <div class="phase-info">
+        <h3>API Gateway e Docker</h3>
+        <p>YARP Reverse Proxy · Docker Multi-stage · Compose · Testcontainers</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"Seu cliente precisa conhecer 5 URLs diferentes para usar seu sistema. Se você mudar a porta de um serviço, todos os clients quebram. Como resolver?"</p>
+    </div>
+
+    <p><strong>API Gateway.</strong> O YARP é um ponto único de entrada: <code>http://gateway:8080/api/orders/*</code> roteia para o Orders API internamente. O client conhece <em>uma</em> URL. Se um serviço mudar de porta, atualiza a config do gateway — clients nem percebem.</p>
+
+    <div class="callout callout--tip">
+      <div class="callout-label">📐 Impacto do Multi-stage Build</div>
+      <table>
+        <tr><th>Build</th><th>Imagem</th><th>Tamanho</th></tr>
+        <tr><td>Single-stage (SDK)</td><td><code>sdk:10.0</code></td><td>~700 MB</td></tr>
+        <tr><td>Multi-stage (Runtime)</td><td><code>aspnet:10.0</code></td><td>~80 MB</td></tr>
+        <tr><td colspan="2" style="text-align:right; color: var(--secondary); font-weight:700;">Redução:</td><td style="color: var(--secondary); font-weight:700;">~88%</td></tr>
+      </table>
+    </div>
+
+    <pre data-lang="Dockerfile"><code><span class="cm"># Multi-stage — SDK só no build, runtime enxuto</span>
+<span class="kw">FROM</span> mcr.microsoft.com/dotnet/sdk:<span class="num">10.0</span> <span class="kw">AS</span> build
+<span class="kw">WORKDIR</span> /src
+<span class="kw">COPY</span> . .
+<span class="kw">RUN</span> dotnet publish -c Release -o /app
+
+<span class="kw">FROM</span> mcr.microsoft.com/dotnet/aspnet:<span class="num">10.0</span> <span class="kw">AS</span> runtime
+<span class="kw">RUN</span> useradd -u <span class="num">1001</span> -m appuser  <span class="cm"># Non-root!</span>
+<span class="kw">USER</span> appuser
+<span class="kw">COPY</span> --from=build /app /app
+<span class="kw">ENTRYPOINT</span> [<span class="str">"dotnet"</span>, <span class="str">"OrderFlow.Orders.Api.dll"</span>]</code></pre>
+
+    <div class="callout callout--deep">
+      <div class="callout-label">🔬 Deep Dive — Testcontainers</div>
+      <p>Em vez de mockar SQL Server e RabbitMQ nos testes de integração, <strong>Testcontainers sobe containers reais descartáveis</strong>. O teste roda migrations no banco real, publica eventos no RabbitMQ real, e verifica comportamento end-to-end. Se funciona no teste, funciona em produção — porque <em>é o mesmo banco</em>.</p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- FASE 8                                                       -->
+  <!-- ============================================================ -->
+  <section>
+    <div class="phase-header">
+      <div class="phase-number">08</div>
+      <div class="phase-info">
+        <h3>CI/CD e Deploy na Azure</h3>
+        <p>GitHub Actions · Azure Container Apps · Bicep IaC · Environments</p>
+      </div>
+    </div>
+
+    <div class="callout callout--socratic">
+      <div class="callout-label">🤔 Pergunta Socrática</div>
+      <p class="question">"Você confia o suficiente no seu código para que, a cada push, ele vá automaticamente para produção?"</p>
+    </div>
+
+    <p>Esse é o espectro <strong>Continuous Delivery vs. Continuous Deployment</strong>. Delivery: deploy automático até staging, com aprovação manual para produção. Deployment: automático até produção. No OrderFlow usamos <strong>Delivery</strong> — confiança com <em>human gate</em>.</p>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 620 160" xmlns="http://www.w3.org/2000/svg" style="max-width: 620px;">
+        <rect width="620" height="160" fill="#0d1117" rx="10"/>
+        <!-- Push -->
+        <rect x="15" y="55" width="80" height="45" rx="8" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="55" y="75" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk" font-size="10" font-weight="700">git push</text>
+        <text x="55" y="90" text-anchor="middle" fill="#64748b" font-family="Inter" font-size="8">main</text>
+        <!-- Arrow -->
+        <line x1="95" y1="78" x2="115" y2="78" stroke="#a78bfa" stroke-width="1" marker-end="url(#aA8)"/>
+        <!-- Build -->
+        <rect x="115" y="50" width="90" height="55" rx="8" fill="rgba(56,189,248,0.08)" stroke="#38bdf8" stroke-width="1"/>
+        <text x="160" y="72" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk" font-size="10" font-weight="600">Build</text>
+        <text x="160" y="88" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">dotnet build</text>
+        <text x="160" y="98" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">dotnet test</text>
+        <!-- Arrow -->
+        <line x1="205" y1="78" x2="225" y2="78" stroke="#38bdf8" stroke-width="1" marker-end="url(#aB8)"/>
+        <!-- Docker -->
+        <rect x="225" y="50" width="90" height="55" rx="8" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="1"/>
+        <text x="270" y="72" text-anchor="middle" fill="#34d399" font-family="Space Grotesk" font-size="10" font-weight="600">Publish</text>
+        <text x="270" y="88" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">docker build</text>
+        <text x="270" y="98" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">docker push ACR</text>
+        <!-- Arrow -->
+        <line x1="315" y1="78" x2="335" y2="78" stroke="#34d399" stroke-width="1" marker-end="url(#aG8)"/>
+        <!-- Staging -->
+        <rect x="335" y="50" width="100" height="55" rx="8" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="385" y="72" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk" font-size="10" font-weight="600">Staging</text>
+        <text x="385" y="88" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">Container Apps</text>
+        <text x="385" y="98" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">Smoke tests</text>
+        <!-- Arrow with gate -->
+        <line x1="435" y1="78" x2="470" y2="78" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4"/>
+        <circle cx="468" cy="78" r="10" fill="rgba(248,113,113,0.15)" stroke="#f87171" stroke-width="1.5"/>
+        <text x="468" y="82" text-anchor="middle" fill="#f87171" font-family="Inter" font-size="10">✋</text>
+        <text x="468" y="118" text-anchor="middle" fill="#f87171" font-family="Inter" font-size="7" font-weight="600">Approval</text>
+        <line x1="478" y1="78" x2="498" y2="78" stroke="#f87171" stroke-width="1" marker-end="url(#aR8)"/>
+        <!-- Production -->
+        <rect x="498" y="50" width="105" height="55" rx="8" fill="rgba(52,211,153,0.12)" stroke="#34d399" stroke-width="2"/>
+        <text x="550" y="72" text-anchor="middle" fill="#34d399" font-family="Space Grotesk" font-size="11" font-weight="700">Production</text>
+        <text x="550" y="88" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">Azure Container</text>
+        <text x="550" y="98" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">Apps + Bicep</text>
+        <!-- Labels -->
+        <text x="200" y="30" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk" font-size="10" font-weight="600">── CI (Continuous Integration) ──</text>
+        <text x="455" y="30" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk" font-size="10" font-weight="600">── CD (Continuous Delivery) ──</text>
+        <defs>
+          <marker id="aA8" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto" fill="#a78bfa"><polygon points="0 0,6 2.5,0 5"/></marker>
+          <marker id="aB8" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto" fill="#38bdf8"><polygon points="0 0,6 2.5,0 5"/></marker>
+          <marker id="aG8" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto" fill="#34d399"><polygon points="0 0,6 2.5,0 5"/></marker>
+          <marker id="aR8" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto" fill="#f87171"><polygon points="0 0,6 2.5,0 5"/></marker>
+        </defs>
+      </svg>
+      <div class="diagram-caption">Pipeline CI/CD — do push ao deploy com approval gate</div>
+    </div>
+
+    <pre data-lang="YAML"><code><span class="cm"># .github/workflows/cd.yml</span>
+<span class="kw">name:</span> <span class="str">CD</span>
+<span class="kw">on:</span>
+  <span class="kw">push:</span>
+    <span class="kw">branches:</span> [<span class="str">main</span>]
+
+<span class="kw">jobs:</span>
+  <span class="fn">deploy-staging:</span>
+    <span class="kw">runs-on:</span> <span class="str">ubuntu-latest</span>
+    <span class="kw">environment:</span> <span class="str">staging</span>
+    <span class="kw">steps:</span>
+      - <span class="kw">run:</span> docker build -t ghcr.io/orderflow/api:<span class="tp">${{ github.sha }}</span> .
+      - <span class="kw">run:</span> docker push ghcr.io/orderflow/api:<span class="tp">${{ github.sha }}</span>
+      - <span class="kw">run:</span> az containerapp update --image ghcr.io/orderflow/api:<span class="tp">${{ github.sha }}</span>
+
+  <span class="fn">deploy-production:</span>
+    <span class="kw">needs:</span> <span class="str">deploy-staging</span>
+    <span class="kw">environment:</span> <span class="str">production</span>  <span class="cm"># ← requer aprovação manual</span>
+    <span class="kw">steps:</span>
+      - <span class="kw">run:</span> az deployment group create --template-file infra/main.bicep</code></pre>
+
+    <div class="callout callout--interview">
+      <div class="callout-label">💼 Na Entrevista</div>
+      <p><strong>"Container Apps vs AKS — quando usar cada?"</strong></p>
+      <p><strong>Container Apps</strong>: serverless, define imagem + scaling rules e pronto. Sem gerenciar nodes. Ideal até ~50 serviços. <strong>AKS</strong> (Kubernetes): controle total — service mesh, GPU, custom operators. Complexidade enorme. <em>OrderFlow usa Container Apps porque não precisa de customização profunda.</em></p>
+    </div>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- CROSS-PHASE TABLE                                            -->
+  <!-- ============================================================ -->
+  <section>
+    <h3>📋 Mapa de Competências</h3>
+    <p>Cada fase foi projetada para cobrir tópicos específicos encontrados em vagas enterprise .NET:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Fase</th>
+          <th>Padrão</th>
+          <th>Stack</th>
+          <th>Risco Mitigado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>01</strong></td>
+          <td>Clean Architecture</td>
+          <td>EF Core, SQL Server, Serilog</td>
+          <td>Caos de camadas, acoplamento</td>
+        </tr>
+        <tr>
+          <td><strong>02</strong></td>
+          <td>Rich Domain Model</td>
+          <td>DDD, Value Objects, State Machine</td>
+          <td>Invariantes corrompidas</td>
+        </tr>
+        <tr>
+          <td><strong>03</strong></td>
+          <td>CQRS</td>
+          <td>MediatR, Dapper, Result Pattern</td>
+          <td>Modelo único sem escalabilidade</td>
+        </tr>
+        <tr>
+          <td><strong>04</strong></td>
+          <td>JWT + Refresh Rotation</td>
+          <td>Identity, Policies, Rate Limiting</td>
+          <td>Token theft, acesso prolongado</td>
+        </tr>
+        <tr>
+          <td><strong>05</strong></td>
+          <td>Outbox Pattern</td>
+          <td>MassTransit, RabbitMQ, DLQ</td>
+          <td>Eventos perdidos em falhas</td>
+        </tr>
+        <tr>
+          <td><strong>06</strong></td>
+          <td>Observability</td>
+          <td>OpenTelemetry, Serilog, Redis</td>
+          <td>Sistema "black-box"</td>
+        </tr>
+        <tr>
+          <td><strong>07</strong></td>
+          <td>Gateway + Containers</td>
+          <td>YARP, Docker multi-stage, Testcontainers</td>
+          <td>Acoplamento client-service</td>
+        </tr>
+        <tr>
+          <td><strong>08</strong></td>
+          <td>CI/CD + IaC</td>
+          <td>GitHub Actions, Bicep, Container Apps</td>
+          <td>Deploy manual inconsistente</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- GLOSSÁRIO                                                    -->
+  <!-- ============================================================ -->
+  <section>
+    <h3>📖 Glossário Rápido</h3>
+    <table>
+      <thead>
+        <tr><th>Termo</th><th>O que é</th><th>Exemplo no OrderFlow</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>Aggregate Root</code></td><td>Entidade raiz que protege invariantes de um grupo</td><td><code>Order</code> (com OrderItems internos)</td></tr>
+        <tr><td><code>Value Object</code></td><td>Objeto sem identidade, comparável por valor</td><td><code>Money { 100, "BRL" }</code></td></tr>
+        <tr><td><code>Domain Event</code></td><td>Notificação in-process de algo que aconteceu</td><td><code>OrderCreatedDomainEvent</code></td></tr>
+        <tr><td><code>Integration Event</code></td><td>Evento que cruza fronteiras de serviço</td><td><code>OrderCreated</code> via RabbitMQ</td></tr>
+        <tr><td><code>Outbox</code></td><td>Tabela de eventos pendentes (garantia)</td><td><code>OutboxMessages</code> table</td></tr>
+        <tr><td><code>Pipeline Behavior</code></td><td>Middleware de handler (cross-cutting)</td><td><code>ValidationBehavior</code></td></tr>
+        <tr><td><code>Result&lt;T&gt;</code></td><td>Retorno tipado sem exceções</td><td><code>Result.Success(order)</code></td></tr>
+        <tr><td><code>CQRS</code></td><td>Separação de comandos e consultas</td><td>EF Core (write) + Dapper (read)</td></tr>
+        <tr><td><code>YARP</code></td><td>Yet Another Reverse Proxy (Microsoft)</td><td>Gateway roteia <code>/api/orders</code></td></tr>
+        <tr><td><code>Bicep</code></td><td>IaC nativa Azure</td><td><code>infra/main.bicep</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr class="sep" />
+
+  <!-- ============================================================ -->
+  <!-- CONCLUSION                                                   -->
+  <!-- ============================================================ -->
+  <section>
+    <h3>🎓 Conclusão — O que o OrderFlow Demonstra</h3>
+    <p>Em uma entrevista, em vez de dizer <em>"estudei microserviços"</em>, você aponta para o repositório e diz:</p>
+
+    <div class="callout callout--tip">
+      <div class="callout-label">✨ Seu Pitch</div>
+      <p style="font-style: italic; color: #fff; line-height: 1.8;">
+        "Construí um sistema com 4 microserviços, API Gateway com YARP, comunicação assíncrona via RabbitMQ com MassTransit e Outbox Pattern, CQRS com MediatR, domínio rico com DDD, cache distribuído com Redis, observabilidade com OpenTelemetry, testes de integração com Testcontainers, e CI/CD com GitHub Actions. Posso explicar qualquer decisão arquitetural e o porquê."
+      </p>
+    </div>
+
+    <p>O domínio é intencionalmente simples. A arquitetura é intencionalmente rica. <strong>Cada padrão existe porque resolve um problema real</strong> — documentado em ADRs, validado em testes, e pronto para ser discutido em entrevistas.</p>
+
+    <div class="callout callout--deep">
+      <div class="callout-label">📚 Documentação Completa</div>
+      <p>Este guia é um resumo visual. Para implementação passo-a-passo com código completo, consulte os 9 documentos na pasta <code>docs/</code>: <code>00-visao-geral.md</code> até <code>fase-08-cicd-cloud.md</code>. Cada fase inclui learning objectives, artefatos criados e perguntas de entrevista com respostas articuladas (~40 perguntas no total).</p>
+    </div>
+  </section>
+
+</article>
+
+<!-- ============================================================ -->
+<!-- FOOTER                                                       -->
+<!-- ============================================================ -->
+<footer class="footer">
+  <p>
+    <strong>OrderFlow</strong> — da arquitetura ao deploy em cloud.
+  </p>
+  <p style="margin-top: 0.5rem;">
+    .NET 10 · C# 13 · Clean Architecture · DDD · CQRS · Event-Driven · Docker · Azure
+  </p>
+  <p style="margin-top: 1rem; font-size: 0.75rem; color: var(--text-muted);">
+    Projeto de portfólio enterprise — Abril 2026
+  </p>
+</footer>
+
+</body>
+</html>
