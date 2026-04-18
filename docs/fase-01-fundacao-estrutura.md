@@ -590,7 +590,7 @@ SA_PASSWORD=OrderFlow@2026!
 >
 > **Comandos essenciais:**
 > ```bash
-> docker compose up -d          # Sobe tudo em background (-d = detached)
+> docker compose up -d           # Sobe tudo em background (-d = detached)
 > docker compose down            # Para e remove containers (volumes ficam)
 > docker compose down -v         # Para, remove containers E volumes (cuidado!)
 > docker compose logs sqlserver  # Vê logs do SQL Server
@@ -1180,6 +1180,8 @@ public sealed record ProductSearchRequest(
 > public sealed record ProductDto(Guid Id, string Name, ...);
 > ```
 > Essa é a **positional syntax** — o compilador gera um construtor, propriedades `init`, e desconstrução. É equivalente a escrever ~30 linhas de classe com propriedades. O `sealed` nos records impede herança e habilita otimizações do compilador.
+
+**`src/Services/Catalog/OrderFlow.Catalog.Application/DTOs/CategoryDto.cs`**
 
 ```csharp
 namespace OrderFlow.Catalog.Application.DTOs;

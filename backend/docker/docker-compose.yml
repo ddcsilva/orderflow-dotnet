@@ -1,0 +1,34 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: orderflow-sqlserver
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD:-OrderFlow@2026!}"
+      MSSQL_PID: "Developer"
+    volumes:
+      - sqlserver-data:/var/lib/mssql/data
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  seq:
+    image: datalust/seq:latest
+    container_name: orderflow-seq
+    ports:
+      - "5341:80"
+    environment:
+      ACCEPT_EULA: "Y"
+    volumes:
+      - seq-data:/data
+    restart: unless-stopped
+
+volumes:
+  sqlserver-data:
+  seq-data:
