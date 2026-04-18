@@ -203,6 +203,8 @@ docs/
 
 ### 4.3 Configurar Azure Service Principal
 
+> ⚠️ **OIDC (recomendado):** O flag `--sdk-auth` está **deprecated**. A abordagem moderna é usar **federated credentials** (OIDC) com `azure/login@v2`, eliminando a necessidade de secrets de longa duração. Veja [GitHub OIDC + Azure](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure). O exemplo abaixo usa `--sdk-auth` por simplicidade didática, mas em produção, prefira OIDC.
+
 ```bash
 az login
 az ad sp create-for-rbac \
@@ -325,6 +327,7 @@ name: CD - Deploy to Staging
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]  # Também builda imagens ao criar release tag
 
 env:
   REGISTRY: ghcr.io
@@ -374,7 +377,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service.name }}
           tags: |
             type=sha,prefix=
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_type != 'tag' }}
+            type=semver,pattern={{version}}
 
       - name: Build and Push
         uses: docker/build-push-action@v5
@@ -502,35 +506,35 @@ jobs:
         with:
           containerAppName: orderflow-gateway-prod
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:latest
+          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-gateway:${{ steps.tag.outputs.version }}
 
       - name: Deploy Identity API
         uses: azure/container-apps-deploy-action@v2
         with:
           containerAppName: orderflow-identity-prod
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-identity-api:latest
+          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-identity-api:${{ steps.tag.outputs.version }}
 
       - name: Deploy Catalog API
         uses: azure/container-apps-deploy-action@v2
         with:
           containerAppName: orderflow-catalog-prod
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-catalog-api:latest
+          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-catalog-api:${{ steps.tag.outputs.version }}
 
       - name: Deploy Orders API
         uses: azure/container-apps-deploy-action@v2
         with:
           containerAppName: orderflow-orders-prod
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-orders-api:latest
+          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-orders-api:${{ steps.tag.outputs.version }}
 
       - name: Deploy Notification Worker
         uses: azure/container-apps-deploy-action@v2
         with:
           containerAppName: orderflow-worker-prod
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-worker:latest
+          imageToDeploy: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-notification-worker:${{ steps.tag.outputs.version }}
 
       - name: Production Smoke Test
         run: |
@@ -787,6 +791,95 @@ resource ordersApp 'Microsoft.App/containerApps@2024-03-01' = {
           {
             name: 'http-scaling'
             http: { metadata: { concurrentRequests: '50' } }
+          }
+        ]
+      }
+    }
+  }
+}
+
+// ===== Identity API =====
+resource identityApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: '${projectName}-identity-${environment}'
+  location: location
+  properties: {
+    managedEnvironmentId: containerEnv.id
+    configuration: {
+      ingress: {
+        external: false
+        targetPort: 8080
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: 'identity-api'
+          image: '${imagePrefix}/orderflow-identity-api:latest'
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: [
+            { name: 'ASPNETCORE_ENVIRONMENT', value: environment == 'prod' ? 'Production' : 'Staging' }
+            {
+              name: 'ConnectionStrings__IdentityDb'
+              value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=OrderFlow_Identity;User ID=orderflowadmin;Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;'
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: environment == 'prod' ? 1 : 0
+        maxReplicas: 5
+      }
+    }
+  }
+}
+
+// ===== Notification Worker =====
+resource workerApp 'Microsoft.App/containerApps@2024-03-01' = {
+  name: '${projectName}-worker-${environment}'
+  location: location
+  properties: {
+    managedEnvironmentId: containerEnv.id
+    configuration: {}
+    template: {
+      containers: [
+        {
+          name: 'notification-worker'
+          image: '${imagePrefix}/orderflow-notification-worker:latest'
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: [
+            { name: 'DOTNET_ENVIRONMENT', value: environment == 'prod' ? 'Production' : 'Staging' }
+            {
+              name: 'ServiceBus__ConnectionString'
+              value: serviceBus.listKeys().primaryConnectionString
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: environment == 'prod' ? 1 : 0
+        maxReplicas: 5
+        rules: [
+          {
+            name: 'queue-scaling'
+            custom: {
+              type: 'azure-servicebus'
+              metadata: {
+                queueName: 'order-created'
+                messageCount: '10'
+              }
+              auth: [
+                {
+                  secretRef: 'servicebus-connection'
+                  triggerParameter: 'connection'
+                }
+              ]
+            }
           }
         ]
       }
@@ -1157,15 +1250,16 @@ open http://localhost:15672  # orderflow / orderflow123
 
 | Artefato | Arquivo/Local |
 |----------|---------------|
-| CI Workflow | `.github/workflows/ci.yml` (build, test, lint) |
-| CD Workflow | `.github/workflows/cd.yml` (publish images, deploy) |
-| Bicep Modules | `infra/main.bicep`, `modules/container-app.bicep`, `modules/acr.bicep` |
-| Environment Config | `infra/parameters.staging.json`, `infra/parameters.production.json` |
-| GitHub Secrets | `AZURE_CREDENTIALS`, `ACR_LOGIN_SERVER`, `ACR_USERNAME`, `ACR_PASSWORD` |
-| Container Registry | Azure Container Registry (ACR) para imagens |
-| Container Apps | Container App per service + environment |
+| CI Workflow | `.github/workflows/ci.yml` (build, test, coverage) |
+| CD Staging Workflow | `.github/workflows/cd-staging.yml` (build images, deploy staging) |
+| CD Production Workflow | `.github/workflows/cd-production.yml` (deploy prod com approval) |
+| Bicep Template | `infra/azure/main.bicep` (IaC completa) |
+| GitHub Environments | `staging` (auto), `production` (approval manual) |
+| GitHub Secrets | `AZURE_CREDENTIALS`, `AZURE_RESOURCE_GROUP`, `SQL_ADMIN_PASSWORD` |
+| Container Registry | GitHub Container Registry (ghcr.io) |
+| Container Apps | 5 Container Apps por ambiente (gateway, identity, catalog, orders, worker) |
 | Log Analytics | Workspace para logs centralizados |
-| Testes | Smoke tests no pipeline após deploy |
+| Smoke Tests | Health check automatizado pós-deploy |
 
 ---
 

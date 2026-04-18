@@ -639,10 +639,11 @@ public sealed record OrderCreatedDomainEvent(
     Guid OrderId,
     string OrderNumber,
     Guid CustomerId,
+    decimal TotalAmount,
     DateTime OccurredOn) : IDomainEvent
 {
-    public OrderCreatedDomainEvent(Guid orderId, string orderNumber, Guid customerId)
-        : this(orderId, orderNumber, customerId, DateTime.UtcNow) { }
+    public OrderCreatedDomainEvent(Guid orderId, string orderNumber, Guid customerId, decimal totalAmount)
+        : this(orderId, orderNumber, customerId, totalAmount, DateTime.UtcNow) { }
 }
 ```
 
@@ -673,11 +674,12 @@ namespace OrderFlow.Orders.Domain.Events;
 
 public sealed record OrderConfirmedDomainEvent(
     Guid OrderId,
+    string OrderNumber,
     decimal TotalAmount,
     DateTime OccurredOn) : IDomainEvent
 {
-    public OrderConfirmedDomainEvent(Guid orderId, decimal totalAmount)
-        : this(orderId, totalAmount, DateTime.UtcNow) { }
+    public OrderConfirmedDomainEvent(Guid orderId, string orderNumber, decimal totalAmount)
+        : this(orderId, orderNumber, totalAmount, DateTime.UtcNow) { }
 }
 ```
 
@@ -690,11 +692,12 @@ namespace OrderFlow.Orders.Domain.Events;
 
 public sealed record OrderCancelledDomainEvent(
     Guid OrderId,
+    string OrderNumber,
     string Reason,
     DateTime OccurredOn) : IDomainEvent
 {
-    public OrderCancelledDomainEvent(Guid orderId, string reason)
-        : this(orderId, reason, DateTime.UtcNow) { }
+    public OrderCancelledDomainEvent(Guid orderId, string orderNumber, string reason)
+        : this(orderId, orderNumber, reason, DateTime.UtcNow) { }
 }
 ```
 
@@ -812,7 +815,7 @@ public sealed class Order : AggregateRoot
         };
 
         order.AddDomainEvent(new OrderCreatedDomainEvent(
-            order.Id, order.OrderNumber.Value, customerId));
+            order.Id, order.OrderNumber.Value, customerId, 0m));
 
         return order;
     }
@@ -866,7 +869,7 @@ public sealed class Order : AggregateRoot
         Status = Status.TransitionTo(OrderStatus.Confirmed);
         SetUpdated();
 
-        AddDomainEvent(new OrderConfirmedDomainEvent(Id, TotalAmount.Amount));
+        AddDomainEvent(new OrderConfirmedDomainEvent(Id, OrderNumber.Value, TotalAmount.Amount));
     }
 
     public void Ship()
@@ -889,7 +892,7 @@ public sealed class Order : AggregateRoot
         CancellationReason = reason.Trim();
         SetUpdated();
 
-        AddDomainEvent(new OrderCancelledDomainEvent(Id, reason));
+        AddDomainEvent(new OrderCancelledDomainEvent(Id, OrderNumber.Value, reason));
     }
 
     public void UpdateShippingAddress(Address newAddress)
@@ -1538,7 +1541,7 @@ public class Order : AggregateRoot
             throw new DomainException("Order cannot be confirmed in current state");
         Status = OrderStatus.Confirmed;
         Version++;
-        Raise(new OrderConfirmedEvent(Id));
+        AddDomainEvent(new OrderConfirmedEvent(Id));
     }
 }
 

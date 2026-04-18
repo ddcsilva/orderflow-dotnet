@@ -546,7 +546,7 @@ public sealed class TokenService(IOptions<JwtSettings> jwtSettings) : ITokenServ
         var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out var securityToken);
 
         if (securityToken is not JwtSecurityToken jwtSecurityToken ||
-            !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+            !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
@@ -590,10 +590,12 @@ public interface IAuthService
 ```csharp
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using OrderFlow.Identity.Api.Data;
 using OrderFlow.Identity.Api.DTOs;
 using OrderFlow.Identity.Api.Models;
 using OrderFlow.Orders.Application.Common;
+using OrderFlow.SharedKernel.Auth;
 
 namespace OrderFlow.Identity.Api.Services;
 
@@ -601,8 +603,10 @@ public sealed class AuthService(
     UserManager<ApplicationUser> userManager,
     ITokenService tokenService,
     AppIdentityDbContext dbContext,
+    IOptions<JwtSettings> jwtSettings,
     ILogger<AuthService> logger) : IAuthService
 {
+    private readonly JwtSettings _jwtSettings = jwtSettings.Value;
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
     {
         var existingUser = await userManager.FindByEmailAsync(request.Email);
@@ -639,14 +643,26 @@ public sealed class AuthService(
             return Result<AuthResponse>.Failure(
                 new Error("Auth.InvalidCredentials", "Invalid email or password."));
 
+        // Verificar se a conta está bloqueada ANTES de tentar a senha
+        if (await userManager.IsLockedOutAsync(user))
+        {
+            logger.LogWarning("Locked out user attempted login: {Email}", request.Email);
+            return Result<AuthResponse>.Failure(
+                new Error("Auth.LockedOut", "Account temporarily locked. Try again later."));
+        }
+
         var isValidPassword = await userManager.CheckPasswordAsync(user, request.Password);
         if (!isValidPassword)
         {
+            // Registrar tentativa falhada — incrementa contador de lockout
+            await userManager.AccessFailedAsync(user);
             logger.LogWarning("Failed login attempt for {Email}", request.Email);
             return Result<AuthResponse>.Failure(
                 new Error("Auth.InvalidCredentials", "Invalid email or password."));
         }
 
+        // Login bem-sucedido — resetar contador de tentativas falhadas
+        await userManager.ResetAccessFailedCountAsync(user);
         logger.LogInformation("User logged in: {Email}", user.Email);
 
         return await GenerateAuthResponse(user);
@@ -703,7 +719,7 @@ public sealed class AuthService(
         return Result<AuthResponse>.Success(new AuthResponse(
             accessToken,
             rawValue, // Retorna valor bruto (não o hash) para o cliente
-            DateTime.UtcNow.AddMinutes(15),
+            DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes),
             new UserDto(user.Id, user.FullName, user.Email!, roles.ToList())));
     }
 
@@ -742,7 +758,7 @@ public sealed class AuthService(
         return Result<AuthResponse>.Success(new AuthResponse(
             accessToken,
             rawValue, // Retorna valor bruto para o cliente
-            DateTime.UtcNow.AddMinutes(15),
+            DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes),
             new UserDto(user.Id, user.FullName, user.Email!, roles.ToList())));
     }
 }

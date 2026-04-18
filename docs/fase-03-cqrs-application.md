@@ -1006,9 +1006,9 @@ public static class DependencyInjection
             // 1. Logging: registra request/response (inclusive falhas de validação)
             // 2. Validation: rejeita requests inválidas ANTES de abrir transação
             // 3. Transaction: envolve o handler em transação real do DbContext
-            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
-            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
+            cfg.AddOpenBehavior(typeof(LoggingBehavior<,>));
+            cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+            cfg.AddOpenBehavior(typeof(TransactionBehavior<,>));
         });
 
         services.AddValidatorsFromAssembly(assembly);
@@ -1378,6 +1378,9 @@ public static class DependencyInjection
 
         // Unit of Work
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+        // DbContext como alias — necessário para TransactionBehavior que injeta DbContext genérico
+        services.AddScoped<DbContext>(sp => sp.GetRequiredService<OrdersDbContext>());
 
         return services;
     }
@@ -1937,7 +1940,7 @@ Vantagens: leitura instantânea (single document), escala independente. Desvanta
 
 **"Quando vale separar read model fisicamente?"** — Quando query exige join de 5+ tabelas, agregações pesadas, ou diferentes APIs querem visões muito distintas. Sintoma: query tem 200 linhas de SQL com CTEs.
 
-**"Pipeline behaviors — qual ordem importa?"** — Logging > Transaction > Validation > Caching > Handler. Logging primeiro captura tudo (incluindo erros de validação); Transaction precede validação para que erros não façam rollback (não houve insert); Validação antes de Caching (não cacheia inválido); Caching antes do Handler.
+**"Pipeline behaviors — qual ordem importa?"** — Logging > Validation > Transaction > Caching > Handler. Logging primeiro captura tudo (incluindo erros de validação); Validation antes de Transaction (não abre transação para request inválida — economia de recursos); Transaction antes do Handler (garante atomicidade); Caching opcional antes do Handler (evita reprocessar queries já cacheadas).
 
 ---
 

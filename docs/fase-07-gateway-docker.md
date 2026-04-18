@@ -294,10 +294,7 @@ app.Run();
         "ClusterId": "identity-cluster",
         "Match": {
           "Path": "/api/auth/{**catch-all}"
-        },
-        "Transforms": [
-          { "PathRemovePrefix": "" }
-        ]
+        }
       },
       "catalog-route": {
         "ClusterId": "catalog-cluster",
@@ -456,6 +453,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && groupadd -r appuser && useradd -r -g appuser appuser
 USER appuser
 COPY --from=build /app/publish .
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health/live || exit 1
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "OrderFlow.Identity.Api.dll"]
 ```
@@ -512,7 +511,8 @@ COPY src/ .
 WORKDIR /src/Services/Notifications/OrderFlow.Notifications.Worker
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# Worker não precisa do ASP.NET Core runtime — basta o runtime base (menor)
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
 WORKDIR /app
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 USER appuser
@@ -544,6 +544,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && groupadd -r appuser && useradd -r -g appuser appuser
 USER appuser
 COPY --from=build /app/publish .
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "OrderFlow.Gateway.dll"]
 ```
@@ -566,8 +568,6 @@ JWT_SECRET=SuperSecretKeyWithAtLeast32CharactersForHmacSha256!!
 **`docker-compose.yml`**
 
 ```yaml
-version: '3.8'
-
 services:
   # ===== INFRASTRUCTURE =====
   sqlserver:
@@ -628,7 +628,7 @@ services:
       - orderflow-net
 
   seq:
-    image: datalust/seq:latest
+    image: datalust/seq:2024.4
     container_name: orderflow-seq
     restart: unless-stopped
     ports:
@@ -1013,7 +1013,7 @@ docker compose down -v
 — YARP é mantido pela **equipe do ASP.NET** na Microsoft — usa o pipeline nativo de middleware (Kestrel, HttpClient factory, DI). Ocelot é open-source, maduro, mas reimplementa conceitos que o ASP.NET já tem. YARP é mais performante (menos alocações), configé via IConfiguration (hot reload), e suporta transforms (headers, path) nativamente.
 
 **3. "Qual a vantagem de Docker multi-stage build?"**
-— **Stage 1** (`sdk:9.0`): compila e publica — imagem grande com todo o SDK. **Stage 2** (`aspnet:9.0`): copia apenas o binário publicado — imagem final pequena (~80MB vs ~700MB). Resultado: imagens menores = pull mais rápido = deploy mais rápido = menos superfície de ataque. Além disso, o SDK não vai para produção.
+— **Stage 1** (`sdk:10.0`): compila e publica — imagem grande com todo o SDK. **Stage 2** (`aspnet:10.0`): copia apenas o binário publicado — imagem final pequena (~80MB vs ~700MB). Resultado: imagens menores = pull mais rápido = deploy mais rápido = menos superfície de ataque. Além disso, o SDK não vai para produção.
 
 $$\text{Redução} = 1 - \frac{\text{Imagem runtime (\~80MB)}}{\text{Imagem SDK (\~700MB)}} \approx 88\%$$
 

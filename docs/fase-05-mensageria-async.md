@@ -172,6 +172,8 @@ MassTransit usa fanout exchange por padrão (publish/subscribe).
 Cada consumer type ganha sua própria queue.
 ```
 
+> ⚠️ **Produção: Quorum Queues.** Por padrão, RabbitMQ cria **classic queues**. Para produção, use **quorum queues** (`x-queue-type: quorum`) — elas replicam dados entre nós do cluster, garantindo **alta disponibilidade** e **durabilidade** mesmo se um nó cair. No MassTransit, configure via `endpointConfigurator.SetQuorumQueue()` no ConsumerDefinition. Quorum queues são recomendadas para qualquer fila que não pode perder mensagens.
+
 ### At-Least-Once Delivery
 
 > 🧠 **Analogia — O Entregador Insistente:** Imagine um entregador que só marca "entregue" quando você **assina o recibo**. Se ele bate na porta e você não abre, ele **volta amanhã**. E de novo. E de novo. Eventualmente você recebe. Mas às vezes ele volta mesmo depois que você já assinou (erro de sistema). Por isso, **você** precisa ser esperto: se já recebeu, não abre o pacote de novo. Isso é idempotência.
@@ -420,6 +422,9 @@ public static class DependencyInjection
         // Unit of Work
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+        // DbContext como alias — necessário para TransactionBehavior (fase-03)
+        services.AddScoped<DbContext>(sp => sp.GetRequiredService<OrdersDbContext>());
+
         // MassTransit + RabbitMQ + EF Core Outbox
         services.AddMassTransit(cfg =>
         {
@@ -428,6 +433,12 @@ public static class DependencyInjection
             {
                 o.UseSqlServer();
                 o.UseBusOutbox();   // Publica mensagens do outbox automaticamente
+            });
+
+            // Aplica o outbox a todos os endpoints (consumer-side inbox para deduplicação)
+            cfg.AddConfigureEndpointsCallback((context, name, endpointCfg) =>
+            {
+                endpointCfg.UseEntityFrameworkOutbox<OrdersDbContext>(context);
             });
 
             cfg.UsingRabbitMq((context, rabbitCfg) =>
@@ -626,6 +637,10 @@ public sealed class OrderCreatedConsumerDefinition : ConsumerDefinition<OrderCre
             cb.ActiveThreshold = 5;
             cb.ResetInterval = TimeSpan.FromMinutes(5);
         });
+
+        // Para usar o IdempotentConsumerFilter (seção 5.5), registre assim:
+        // endpointConfigurator.UseFilter(
+        //     new IdempotentConsumerFilter<OrderCreated>(redis, loggerFactory.CreateLogger<...>()));
     }
 }
 ```
@@ -841,7 +856,7 @@ public class OrderCreatedDomainEventHandlerTests
         var handler = new OrderCreatedDomainEventHandler(publishEndpointMock.Object, loggerMock.Object);
 
         var domainEvent = new OrderCreatedDomainEvent(
-            Guid.NewGuid(), "ORD-20260415-XYZ", Guid.NewGuid());
+            Guid.NewGuid(), "ORD-20260415-XYZ", Guid.NewGuid(), 0m);
 
         await handler.Handle(domainEvent, CancellationToken.None);
 
