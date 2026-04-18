@@ -98,8 +98,9 @@ public sealed class ProductRepository(CatalogDbContext context) : IProductReposi
 
     public async Task<bool> SkuExistsAsync(string sku, CancellationToken ct = default)
     {
+        var normalizedSku = sku.Trim().ToUpperInvariant();
         return await context.Products
             .IgnoreQueryFilters()
-            .AnyAsync(p => p.Sku == sku, ct);
+            .AnyAsync(p => p.Sku == normalizedSku, ct);
     }
 }

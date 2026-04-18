@@ -8,7 +8,7 @@ using OrderFlow.SharedKernel;
 
 namespace OrderFlow.Catalog.Application.Services;
 
-public sealed class ProductService(
+public sealed partial class ProductService(
     IProductRepository productRepository,
     ICategoryRepository categoryRepository,
     IUnitOfWork unitOfWork,
@@ -53,10 +53,10 @@ public sealed class ProductService(
             throw new ValidationException(validation.Errors);
 
         var category = await categoryRepository.GetByIdAsync(request.CategoryId, ct)
-            ?? throw new KeyNotFoundException($"Category with ID '{request.CategoryId}' not found.");
+            ?? throw new KeyNotFoundException($"Categoria com ID '{request.CategoryId}' não foi encontrada.");
 
         if (await productRepository.SkuExistsAsync(request.Sku, ct))
-            throw new InvalidOperationException($"A product with SKU '{request.Sku}' already exists.");
+            throw new InvalidOperationException($"Já existe um produto com o SKU '{request.Sku}'.");
 
         var product = Product.Create(
             request.Name,
@@ -69,7 +69,7 @@ public sealed class ProductService(
         await productRepository.AddAsync(product, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogInformation("Product created: {ProductId} - {ProductName}", product.Id, product.Name);
+        LogProductCreated(logger, product.Id, product.Name);
 
         return MapToDto(product);
     }
@@ -81,14 +81,14 @@ public sealed class ProductService(
             throw new ValidationException(validation.Errors);
 
         var product = await productRepository.GetByIdAsync(id, ct)
-            ?? throw new KeyNotFoundException($"Product with ID '{id}' not found.");
+            ?? throw new KeyNotFoundException($"Produto com ID '{id}' não foi encontrado.");
 
         product.Update(request.Name, request.Description, request.Price, request.StockQuantity);
 
         productRepository.Update(product);
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogInformation("Product updated: {ProductId}", product.Id);
+        LogProductUpdated(logger, product.Id);
 
         return MapToDto(product);
     }
@@ -96,13 +96,13 @@ public sealed class ProductService(
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var product = await productRepository.GetByIdAsync(id, ct)
-            ?? throw new KeyNotFoundException($"Product with ID '{id}' not found.");
+            ?? throw new KeyNotFoundException($"Produto com ID '{id}' não foi encontrado.");
 
         product.Deactivate();
         productRepository.Update(product);
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogInformation("Product deactivated: {ProductId}", product.Id);
+        LogProductDeactivated(logger, product.Id);
     }
 
     private static ProductDto MapToDto(Product product) => new(
@@ -117,4 +117,13 @@ public sealed class ProductService(
         product.Category?.Name,
         product.CreatedAt,
         product.UpdatedAt);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product created: {ProductId} - {ProductName}")]
+    private static partial void LogProductCreated(ILogger logger, Guid productId, string productName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product updated: {ProductId}")]
+    private static partial void LogProductUpdated(ILogger logger, Guid productId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product deactivated: {ProductId}")]
+    private static partial void LogProductDeactivated(ILogger logger, Guid productId);
 }

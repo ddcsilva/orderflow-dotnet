@@ -1427,8 +1427,8 @@ docker compose ps              # Status dos containers</code></pre>
     {
         <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(name);
         <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(sku);
-        <span class="kw">if</span> (price &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Price cannot be negative."</span>);
-        <span class="kw">if</span> (stockQuantity &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Stock cannot be negative."</span>);
+        <span class="kw">if</span> (price &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"O preço não pode ser negativo."</span>);
+        <span class="kw">if</span> (stockQuantity &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"A quantidade em estoque não pode ser negativa."</span>);
 
         <span class="kw">return new</span> <span class="tp">Product</span>
         {
@@ -1443,8 +1443,8 @@ docker compose ps              # Status dos containers</code></pre>
     <span class="kw">public void</span> <span class="fn">Update</span>(<span class="kw">string</span> name, <span class="kw">string</span>? desc, <span class="kw">decimal</span> price, <span class="kw">int</span> stock)
     {
         <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(name);
-        <span class="kw">if</span> (price &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Price cannot be negative."</span>);
-        <span class="kw">if</span> (stock &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Stock cannot be negative."</span>);
+        <span class="kw">if</span> (price &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"O preço não pode ser negativo."</span>);
+        <span class="kw">if</span> (stock &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"A quantidade em estoque não pode ser negativa."</span>);
         Name = name.<span class="fn">Trim</span>(); Description = desc?.<span class="fn">Trim</span>();
         Price = price; StockQuantity = stock;
         <span class="fn">SetUpdated</span>();
@@ -1460,14 +1460,14 @@ docker compose ps              # Status dos containers</code></pre>
     {
         <span class="kw">if</span> (!<span class="fn">HasSufficientStock</span>(quantity))
             <span class="kw">throw new</span> <span class="tp">InvalidOperationException</span>(
-                $<span class="str">"Insufficient stock. Available: {StockQuantity}, Requested: {quantity}"</span>);
+                $<span class="str">"Estoque insuficiente. Disponível: {StockQuantity}, Solicitado: {quantity}"</span>);
         StockQuantity -= quantity;
         <span class="fn">SetUpdated</span>();
     }
 
     <span class="kw">public void</span> <span class="fn">IncreaseStock</span>(<span class="kw">int</span> quantity)
     {
-        <span class="kw">if</span> (quantity &lt;= <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Quantity must be positive."</span>);
+        <span class="kw">if</span> (quantity &lt;= <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"A quantidade deve ser positiva."</span>);
         StockQuantity += quantity;
         <span class="fn">SetUpdated</span>();
     }
@@ -1592,7 +1592,7 @@ docker compose ps              # Status dos containers</code></pre>
 <h3>4.6 Catalog Application — Services</h3>
 
 <div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/Services/ProductService.cs</div>
-<pre><code><span class="kw">public sealed class</span> <span class="tp">ProductService</span>(
+<pre><code><span class="kw">public sealed partial class</span> <span class="tp">ProductService</span>(
     <span class="tp">IProductRepository</span> productRepository,
     <span class="tp">ICategoryRepository</span> categoryRepository,
     <span class="tp">IUnitOfWork</span> unitOfWork,
@@ -1610,11 +1610,11 @@ docker compose ps              # Status dos containers</code></pre>
 
         <span class="cm">// 2. Verify category exists</span>
         <span class="kw">var</span> category = <span class="kw">await</span> categoryRepository.<span class="fn">GetByIdAsync</span>(request.CategoryId, ct)
-            ?? <span class="kw">throw new</span> <span class="tp">KeyNotFoundException</span>($<span class="str">"Category '{request.CategoryId}' not found."</span>);
+            ?? <span class="kw">throw new</span> <span class="tp">KeyNotFoundException</span>($<span class="str">"Categoria com ID '{request.CategoryId}' não foi encontrada."</span>);
 
         <span class="cm">// 3. Check SKU uniqueness</span>
         <span class="kw">if</span> (<span class="kw">await</span> productRepository.<span class="fn">SkuExistsAsync</span>(request.Sku, ct))
-            <span class="kw">throw new</span> <span class="tp">InvalidOperationException</span>($<span class="str">"SKU '{request.Sku}' already exists."</span>);
+            <span class="kw">throw new</span> <span class="tp">InvalidOperationException</span>($<span class="str">"Já existe um produto com o SKU '{request.Sku}'."</span>);
 
         <span class="cm">// 4. Create domain entity</span>
         <span class="kw">var</span> product = <span class="tp">Product</span>.<span class="fn">Create</span>(
@@ -1625,9 +1625,8 @@ docker compose ps              # Status dos containers</code></pre>
         <span class="kw">await</span> productRepository.<span class="fn">AddAsync</span>(product, ct);
         <span class="kw">await</span> unitOfWork.<span class="fn">SaveChangesAsync</span>(ct);
 
-        <span class="cm">// 6. Structured logging</span>
-        logger.<span class="fn">LogInformation</span>(<span class="str">"Product created: {ProductId} - {ProductName}"</span>,
-            product.Id, product.Name);
+        <span class="cm">// 6. Structured logging (source-generated)</span>
+        <span class="fn">LogProductCreated</span>(logger, product.Id, product.Name);
 
         <span class="kw">return</span> <span class="fn">MapToDto</span>(product);
     }
@@ -1635,25 +1634,28 @@ docker compose ps              # Status dos containers</code></pre>
     <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">DeleteAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
     {
         <span class="kw">var</span> product = <span class="kw">await</span> productRepository.<span class="fn">GetByIdAsync</span>(id, ct)
-            ?? <span class="kw">throw new</span> <span class="tp">KeyNotFoundException</span>(<span class="str">$"Product '{id}' not found."</span>);
+            ?? <span class="kw">throw new</span> <span class="tp">KeyNotFoundException</span>(<span class="str">$"Produto com ID '{id}' não foi encontrado."</span>);
 
         product.<span class="fn">Deactivate</span>();           <span class="cm">// Soft delete!</span>
         productRepository.<span class="fn">Update</span>(product);
         <span class="kw">await</span> unitOfWork.<span class="fn">SaveChangesAsync</span>(ct);
     }
+
+    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Information, Message = <span class="str">"Product created: {ProductId} - {ProductName}"</span>)]
+    <span class="kw">private static partial void</span> <span class="fn">LogProductCreated</span>(<span class="tp">ILogger</span> logger, <span class="tp">Guid</span> productId, <span class="kw">string</span> productName);
     <span class="cm">// ... GetByIdAsync, GetBySkuAsync, SearchAsync, UpdateAsync ...</span>
 }</code></pre>
 
 <div class="callout callout--arch">
     <div class="callout-title">🏛️ Application Service — O Orquestrador</div>
     <p><strong>ProductService não contém lógica de negócio</strong> — ele <strong>orquestra</strong>: valida input → busca entidades → chama métodos do domínio → persiste → retorna DTO.</p>
-    <p><strong>Primary constructor (C# 12)</strong> — parâmetros viram campos implícitos. <strong>Validate-first</strong> — falha rápido antes de qualquer I/O. <strong>Null-coalescing throw</strong> (<code>??</code>) verifica nulidade em uma linha.</p>
+    <p><strong>Primary constructor (C# 12) + <code>partial</code></strong> — parâmetros viram campos implícitos. O <code>partial</code> é necessário para os métodos <code>[LoggerMessage]</code> source-generated. <strong>Validate-first</strong> — falha rápido antes de qualquer I/O. <strong>Null-coalescing throw</strong> (<code>??</code>) verifica nulidade em uma linha.</p>
     <p><strong>Soft delete</strong> — <code>DeleteAsync</code> chama <code>Deactivate()</code>, não <code>Remove()</code>. Combinado com <code>HasQueryFilter</code> do EF Core, o produto "desaparece" das queries mas permanece no banco.</p>
 </div>
 
 <div class="callout callout--eng">
-    <div class="callout-title">🔬 Structured Logging — Não é interpolação!</div>
-    <p><code>logger.LogInformation("Product created: {ProductId}", product.Id)</code> — <code>{ProductId}</code> é um <strong>template Serilog</strong>. O valor é capturado como propriedade estruturada, permitindo filtrar no Seq: <code>ProductId = "abc-123"</code>. Se fosse <code>$"Product created: {product.Id}"</code>, o Seq veria apenas texto plano.</p>
+    <div class="callout-title">🔬 LoggerMessage Source Generation</div>
+    <p><code>LogProductCreated(logger, product.Id, product.Name)</code> — gerado em compile-time pelo atributo <code>[LoggerMessage]</code>. Evita boxing de parâmetros e alocações em runtime. Com <code>TreatWarningsAsErrors=true</code>, os warnings CA1848/CA1873 bloqueiam o build se usar <code>logger.LogInformation()</code> diretamente. Os templates como <code>{ProductId}</code> capturam valores como propriedades estruturadas no Serilog.</p>
 </div>
 
 <!-- ====== 4.7 Infrastructure ====== -->
@@ -1771,9 +1773,10 @@ docker compose ps              # Status dos containers</code></pre>
 
     <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="kw">bool</span>&gt; <span class="fn">SkuExistsAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct)
     {
+        <span class="kw">var</span> normalizedSku = sku.<span class="fn">Trim</span>().<span class="fn">ToUpperInvariant</span>();
         <span class="kw">return await</span> context.Products
             .<span class="fn">IgnoreQueryFilters</span>()  <span class="cm">// Inclui inativos!</span>
-            .<span class="fn">AnyAsync</span>(p =&gt; p.Sku == sku, ct);
+            .<span class="fn">AnyAsync</span>(p =&gt; p.Sku == normalizedSku, ct);
     }
 }</code></pre>
 
@@ -1884,9 +1887,11 @@ docker compose ps              # Status dos containers</code></pre>
 <h3>4.11 Catalog API — Global Exception Handler</h3>
 
 <div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Middleware/GlobalExceptionHandler.cs</div>
-<pre><code><span class="kw">public sealed class</span> <span class="tp">GlobalExceptionHandler</span>(
+<pre><code><span class="kw">public sealed partial class</span> <span class="tp">GlobalExceptionHandler</span>(
     <span class="tp">ILogger</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt; logger) : <span class="tp">IMiddleware</span>
 {
+    <span class="kw">private static readonly</span> <span class="tp">JsonSerializerOptions</span> JsonOptions = <span class="kw">new</span>(<span class="tp">JsonSerializerDefaults</span>.Web);
+
     <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">InvokeAsync</span>(<span class="tp">HttpContext</span> context, <span class="tp">RequestDelegate</span> next)
     {
         <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">next</span>(context); }
@@ -1899,52 +1904,60 @@ docker compose ps              # Status dos containers</code></pre>
         {
             <span class="tp">ValidationException</span> v =&gt;
                 (<span class="tp">HttpStatusCode</span>.BadRequest,
-                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Validation Error"</span>,
+                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Erro de Validação"</span>,
                      v.Errors.<span class="fn">Select</span>(e =&gt; e.ErrorMessage).<span class="fn">ToArray</span>())),
 
             <span class="tp">KeyNotFoundException</span> n =&gt;
                 (<span class="tp">HttpStatusCode</span>.NotFound,
-                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Not Found"</span>, [n.Message])),
+                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Não Encontrado"</span>, [n.Message])),
 
             <span class="tp">InvalidOperationException</span> i =&gt;
                 (<span class="tp">HttpStatusCode</span>.Conflict,
-                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Business Rule Violation"</span>, [i.Message])),
+                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Violação de Regra de Negócio"</span>, [i.Message])),
 
             _ =&gt; (<span class="tp">HttpStatusCode</span>.InternalServerError,
-                  <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Internal Server Error"</span>,
-                      [<span class="str">"An unexpected error occurred."</span>]))
+                  <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Erro Interno do Servidor"</span>,
+                      [<span class="str">"Ocorreu um erro inesperado."</span>]))
         };
 
         <span class="cm">// Erro 500 = LogError; Erro 4xx = LogWarning</span>
         <span class="kw">if</span> (statusCode == <span class="tp">HttpStatusCode</span>.InternalServerError)
-            logger.<span class="fn">LogError</span>(ex, <span class="str">"Unhandled: {Message}"</span>, ex.Message);
+            <span class="fn">LogUnhandledException</span>(logger, ex, ex.Message);
         <span class="kw">else</span>
-            logger.<span class="fn">LogWarning</span>(ex, <span class="str">"Handled: {StatusCode}"</span>, (<span class="kw">int</span>)statusCode);
+            <span class="fn">LogHandledException</span>(logger, ex, (<span class="kw">int</span>)statusCode);
 
         ctx.Response.StatusCode = (<span class="kw">int</span>)statusCode;
         ctx.Response.ContentType = <span class="str">"application/json"</span>;
-        <span class="kw">await</span> ctx.Response.<span class="fn">WriteAsJsonAsync</span>(errorResponse);
+        <span class="kw">await</span> ctx.Response.<span class="fn">WriteAsJsonAsync</span>(errorResponse, JsonOptions);
     }
+
+    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Error, Message = <span class="str">"Unhandled: {Message}"</span>)]
+    <span class="kw">private static partial void</span> <span class="fn">LogUnhandledException</span>(<span class="tp">ILogger</span> logger, <span class="tp">Exception</span> ex, <span class="kw">string</span> message);
+
+    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Warning, Message = <span class="str">"Handled: {StatusCode}"</span>)]
+    <span class="kw">private static partial void</span> <span class="fn">LogHandledException</span>(<span class="tp">ILogger</span> logger, <span class="tp">Exception</span> ex, <span class="kw">int</span> statusCode);
 }
 
 <span class="kw">public sealed record</span> <span class="tp">ErrorResponse</span>(<span class="kw">string</span> Title, <span class="kw">string</span>[] Errors);</code></pre>
 
 <div class="callout callout--danger">
     <div class="callout-title">🔒 Segurança — Information Disclosure</div>
-    <p>Para erro 500, a mensagem é genérica: <code>"An unexpected error occurred."</code> — <strong>nunca exponha stack traces ao client</strong> (OWASP). O log completo vai para Serilog/Seq. Erros 4xx usam <code>LogWarning</code> (esperados), não <code>LogError</code> — evita alertas falsos.</p>
+    <p>Para erro 500, a mensagem é genérica: <code>"Ocorreu um erro inesperado."</code> — <strong>nunca exponha stack traces ao client</strong> (OWASP). O log completo vai para Serilog/Seq. Erros 4xx usam <code>LogWarning</code> (esperados), não <code>LogError</code> — evita alertas falsos. A classe é <code>partial</code> para suportar os métodos <code>[LoggerMessage]</code> gerados em compile-time. <code>JsonSerializerOptions</code> é cachedo em <code>static readonly</code> para evitar alocações repetidas (CA1869).</p>
 </div>
 
 <!-- ====== 4.12 Program.cs ====== -->
 <h3>4.12 Catalog API — Program.cs</h3>
 
 <div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Program.cs</div>
-<pre><code><span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Api.Middleware</span>;
+<pre><code><span class="kw">using</span> <span class="tp">Microsoft.EntityFrameworkCore</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Api.Middleware</span>;
 <span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Infrastructure</span>;
 <span class="kw">using</span> <span class="tp">Serilog</span>;
 
 <span class="kw">var</span> builder = <span class="tp">WebApplication</span>.<span class="fn">CreateBuilder</span>(args);
 
 <span class="cm">// === Serilog (configurado primeiro para capturar erros de startup) ===</span>
+<span class="pp">#pragma warning disable CA1305</span>
 builder.Host.<span class="fn">UseSerilog</span>((context, loggerConfig) =&gt;
 {
     loggerConfig
@@ -1956,6 +1969,7 @@ builder.Host.<span class="fn">UseSerilog</span>((context, loggerConfig) =&gt;
             <span class="str">"[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"</span>)
         .<span class="fn">WriteTo</span>.<span class="fn">Seq</span>(context.Configuration[<span class="str">"Seq:Url"</span>] ?? <span class="str">"http://localhost:5341"</span>);
 });
+<span class="pp">#pragma warning restore CA1305</span>
 
 <span class="cm">// === Services ===</span>
 builder.Services.<span class="fn">AddControllers</span>();
@@ -2013,6 +2027,8 @@ app.<span class="fn">Run</span>();
     <p><strong>Health Checks:</strong> <code>/health/live</code> com <code>Predicate = _ =&gt; false</code> ignora todos os checks — apenas verifica se o processo responde. <code>/health/ready</code> verifica SQL Server.</p>
     <p><strong>Auto-migrate apenas em Development.</strong> Em produção, migrations via CI/CD — nunca na startup (múltiplas instâncias migrando ao mesmo tempo = problema).</p>
     <p><strong><code>public partial class Program;</code></strong> — permite <code>WebApplicationFactory&lt;Program&gt;</code> nos testes de integração.</p>
+    <p><strong><code>#pragma warning disable CA1305</code></strong> — necessário ao redor do bloco <code>UseSerilog</code> porque os métodos <code>WriteTo.Console</code> e <code>WriteTo.Seq</code> internamente usam formatação sem <code>IFormatProvider</code>, gerando CA1305 com <code>TreatWarningsAsErrors=true</code>.</p>
+    <p><strong><code>using Microsoft.EntityFrameworkCore;</code></strong> — necessário para o <code>MigrateAsync()</code> (extension method de EF Core).</p>
 </div>
 
 <div class="divider"></div>
@@ -2039,13 +2055,18 @@ app.<span class="fn">Run</span>();
     {
         builder.<span class="fn">ConfigureServices</span>(services =&gt;
         {
-            <span class="cm">// Remove SQL Server, adiciona InMemory</span>
-            <span class="kw">var</span> descriptor = services.<span class="fn">SingleOrDefault</span>(
-                d =&gt; d.ServiceType == <span class="kw">typeof</span>(<span class="tp">DbContextOptions</span>&lt;<span class="tp">CatalogDbContext</span>&gt;));
-            <span class="kw">if</span> (descriptor <span class="kw">is not null</span>) services.<span class="fn">Remove</span>(descriptor);
+            <span class="cm">// Remove TODOS os registros do DbContext (inclui Options, Pool, etc.)</span>
+            services.<span class="fn">RemoveAll</span>(<span class="kw">typeof</span>(<span class="tp">DbContextOptions</span>&lt;<span class="tp">CatalogDbContext</span>&gt;));
 
-            services.<span class="fn">AddDbContext</span>&lt;<span class="tp">CatalogDbContext</span>&gt;(options =&gt;
-                options.<span class="fn">UseInMemoryDatabase</span>(<span class="str">"CatalogTestDb_"</span> + <span class="tp">Guid</span>.<span class="fn">NewGuid</span>()));
+            <span class="cm">// Registra manualmente com InMemory (sem AddDbContext)</span>
+            <span class="kw">var</span> dbName = <span class="str">"CatalogTestDb_"</span> + <span class="tp">Guid</span>.<span class="fn">NewGuid</span>();
+            services.<span class="fn">AddScoped</span>(sp =&gt;
+            {
+                <span class="kw">var</span> options = <span class="kw">new</span> <span class="tp">DbContextOptionsBuilder</span>&lt;<span class="tp">CatalogDbContext</span>&gt;()
+                    .<span class="fn">UseInMemoryDatabase</span>(dbName)
+                    .Options;
+                <span class="kw">return new</span> <span class="tp">CatalogDbContext</span>(options);
+            });
         });
         builder.<span class="fn">UseEnvironment</span>(<span class="str">"Testing"</span>);
     }

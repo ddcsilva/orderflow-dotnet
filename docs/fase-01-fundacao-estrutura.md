@@ -959,10 +959,10 @@ public sealed class Product : AuditableEntity
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
 
         if (price < 0)
-            throw new ArgumentException("Price cannot be negative.", nameof(price));
+            throw new ArgumentException("O preço não pode ser negativo.", nameof(price));
 
         if (stockQuantity < 0)
-            throw new ArgumentException("Stock quantity cannot be negative.", nameof(stockQuantity));
+            throw new ArgumentException("A quantidade em estoque não pode ser negativa.", nameof(stockQuantity));
 
         return new Product
         {
@@ -980,8 +980,10 @@ public sealed class Product : AuditableEntity
     public void Update(string name, string? description, decimal price, int stockQuantity)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        if (price < 0) throw new ArgumentException("Price cannot be negative.", nameof(price));
-        if (stockQuantity < 0) throw new ArgumentException("Stock quantity cannot be negative.", nameof(stockQuantity));
+        if (price < 0)
+            throw new ArgumentException("O preço não pode ser negativo.", nameof(price));
+        if (stockQuantity < 0)
+            throw new ArgumentException("A quantidade em estoque não pode ser negativa.", nameof(stockQuantity));
 
         Name = name.Trim();
         Description = description?.Trim();
@@ -993,7 +995,7 @@ public sealed class Product : AuditableEntity
     public void ChangeCategory(Guid newCategoryId)
     {
         if (newCategoryId == Guid.Empty)
-            throw new ArgumentException("Category ID cannot be empty.", nameof(newCategoryId));
+            throw new ArgumentException("O ID da categoria não pode ser vazio.", nameof(newCategoryId));
 
         CategoryId = newCategoryId;
         SetUpdated();
@@ -1017,7 +1019,7 @@ public sealed class Product : AuditableEntity
     {
         if (!HasSufficientStock(quantity))
             throw new InvalidOperationException(
-                $"Insufficient stock. Available: {StockQuantity}, Requested: {quantity}");
+                $"Estoque insuficiente. Disponível: {StockQuantity}, Solicitado: {quantity}");
 
         StockQuantity -= quantity;
         SetUpdated();
@@ -1026,7 +1028,7 @@ public sealed class Product : AuditableEntity
     public void IncreaseStock(int quantity)
     {
         if (quantity <= 0)
-            throw new ArgumentException("Quantity must be positive.", nameof(quantity));
+            throw new ArgumentException("A quantidade deve ser positiva.", nameof(quantity));
 
         StockQuantity += quantity;
         SetUpdated();
@@ -1402,7 +1404,7 @@ using OrderFlow.SharedKernel;
 
 namespace OrderFlow.Catalog.Application.Services;
 
-public sealed class ProductService(
+public sealed partial class ProductService(
     IProductRepository productRepository,
     ICategoryRepository categoryRepository,
     IUnitOfWork unitOfWork,
@@ -1449,10 +1451,10 @@ public sealed class ProductService(
             throw new ValidationException(validation.Errors);
 
         var category = await categoryRepository.GetByIdAsync(request.CategoryId, ct)
-            ?? throw new KeyNotFoundException($"Category with ID '{request.CategoryId}' not found.");
+            ?? throw new KeyNotFoundException($"Categoria com ID '{request.CategoryId}' não foi encontrada.");
 
         if (await productRepository.SkuExistsAsync(request.Sku, ct))
-            throw new InvalidOperationException($"A product with SKU '{request.Sku}' already exists.");
+            throw new InvalidOperationException($"Já existe um produto com o SKU '{request.Sku}'.");
 
         var product = Product.Create(
             request.Name,
@@ -1465,7 +1467,7 @@ public sealed class ProductService(
         await productRepository.AddAsync(product, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogInformation("Product created: {ProductId} - {ProductName}", product.Id, product.Name);
+        LogProductCreated(logger, product.Id, product.Name);
 
         return MapToDto(product);
     }
@@ -1478,14 +1480,14 @@ public sealed class ProductService(
             throw new ValidationException(validation.Errors);
 
         var product = await productRepository.GetByIdAsync(id, ct)
-            ?? throw new KeyNotFoundException($"Product with ID '{id}' not found.");
+            ?? throw new KeyNotFoundException($"Produto com ID '{id}' não foi encontrado.");
 
         product.Update(request.Name, request.Description, request.Price, request.StockQuantity);
 
         productRepository.Update(product);
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogInformation("Product updated: {ProductId}", product.Id);
+        LogProductUpdated(logger, product.Id);
 
         return MapToDto(product);
     }
@@ -1493,13 +1495,13 @@ public sealed class ProductService(
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var product = await productRepository.GetByIdAsync(id, ct)
-            ?? throw new KeyNotFoundException($"Product with ID '{id}' not found.");
+            ?? throw new KeyNotFoundException($"Produto com ID '{id}' não foi encontrado.");
 
         product.Deactivate();
         productRepository.Update(product);
         await unitOfWork.SaveChangesAsync(ct);
 
-        logger.LogInformation("Product deactivated: {ProductId}", product.Id);
+        LogProductDeactivated(logger, product.Id);
     }
 
     private static ProductDto MapToDto(Product product) => new(
@@ -1514,6 +1516,15 @@ public sealed class ProductService(
         product.Category?.Name,
         product.CreatedAt,
         product.UpdatedAt);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product created: {ProductId} - {ProductName}")]
+    private static partial void LogProductCreated(ILogger logger, Guid productId, string productName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product updated: {ProductId}")]
+    private static partial void LogProductUpdated(ILogger logger, Guid productId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product deactivated: {ProductId}")]
+    private static partial void LogProductDeactivated(ILogger logger, Guid productId);
 }
 ```
 
@@ -1527,7 +1538,7 @@ public sealed class ProductService(
 > 🔬 **Nota de Engenharia — Dissecando o fluxo do `CreateAsync`**
 >
 > ```csharp
-> public sealed class ProductService(
+> public sealed partial class ProductService(
 >     IProductRepository productRepository,
 >     ICategoryRepository categoryRepository,
 >     IUnitOfWork unitOfWork,
@@ -1535,7 +1546,7 @@ public sealed class ProductService(
 >     ...
 > ) : IProductService
 > ```
-> **Primary constructor (C# 12)** — os parâmetros do construtor viram campos implícitos da classe. Equivale a 6 campos `private readonly` + construtor com assignments. Mais conciso sem perder funcionalidade. Cada parâmetro é injetado pelo DI container.
+> **Primary constructor (C# 12) + `partial`** — os parâmetros do construtor viram campos implícitos da classe. Equivale a 6 campos `private readonly` + construtor com assignments. Mais conciso sem perder funcionalidade. Cada parâmetro é injetado pelo DI container. O `partial` é necessário para que os métodos `[LoggerMessage]` (source-generated) sejam gerados em compile-time.
 >
 > ```csharp
 > var validation = await createValidator.ValidateAsync(request, ct);
@@ -1556,9 +1567,9 @@ public sealed class ProductService(
 > **Duas operações, uma transação** — `AddAsync` marca no change tracker, `SaveChangesAsync` persiste. Se `SaveChanges` falhar (ex: unique constraint no SKU), nada é salvo. Isso é a **atomicidade** do Unit of Work.
 >
 > ```csharp
-> logger.LogInformation("Product created: {ProductId} - {ProductName}", product.Id, product.Name);
+> LogProductCreated(logger, product.Id, product.Name);
 > ```
-> **Structured logging** — `{ProductId}` não é interpolação de string! É um **template Serilog**. O valor é capturado como propriedade estruturada, permitindo filtrar no Seq: `ProductId = "abc-123"`. Se fosse `$"Product created: {product.Id}"`, o Seq veria apenas texto plano.
+> **Structured logging via source generation** — `LogProductCreated` é gerado em compile-time pelo atributo `[LoggerMessage]`. O template `"Product created: {ProductId} - {ProductName}"` captura valores como propriedades estruturadas no Serilog, permitindo filtrar no Seq: `ProductId = "abc-123"`. Diferente de `$"Product created: {product.Id}"` (interpolação de string), o Serilog recebe campos tipados. A source generation evita boxing de parâmetros e alocações desnecessárias em runtime — e satisfaz os warnings CA1848/CA1873 quando `TreatWarningsAsErrors=true`.
 >
 > ```csharp
 > product.Deactivate();           // NÃO context.Products.Remove(product)
@@ -1841,9 +1852,10 @@ public sealed class ProductRepository(CatalogDbContext context) : IProductReposi
 
     public async Task<bool> SkuExistsAsync(string sku, CancellationToken ct = default)
     {
+        var normalizedSku = sku.Trim().ToUpperInvariant();
         return await context.Products
             .IgnoreQueryFilters()
-            .AnyAsync(p => p.Sku == sku, ct);
+            .AnyAsync(p => p.Sku == normalizedSku, ct);
     }
 }
 ```
@@ -1884,10 +1896,11 @@ public sealed class ProductRepository(CatalogDbContext context) : IProductReposi
 > **Paginação offset-based** — simples de implementar mas com trade-off: páginas altas são lentas (`OFFSET 10000` ainda precisa "pular" 10000 rows). Para datasets enormes, **keyset pagination** (`WHERE Id > @lastId ORDER BY Id TAKE 20`) é mais eficiente. Para o Catalog com ~milhares de produtos, offset é adequado.
 >
 > ```csharp
+> var normalizedSku = sku.Trim().ToUpperInvariant();
 > .IgnoreQueryFilters()
-> .AnyAsync(p => p.Sku == sku, ct);
+> .AnyAsync(p => p.Sku == normalizedSku, ct);
 > ```
-> **`IgnoreQueryFilters()`** aqui é proposital — ao verificar se um SKU existe, precisa checar **inclusive produtos inativos**. Se não ignorasse, um produto desativado com SKU "ABC-001" ficaria invisível, e a criação de outro "ABC-001" passaria na validação mas falharia no unique index do banco.
+> **`IgnoreQueryFilters()`** aqui é proposital — ao verificar se um SKU existe, precisa checar **inclusive produtos inativos**. Se não ignorasse, um produto desativado com SKU "ABC-001" ficaria invisível, e a criação de outro "ABC-001" passaria na validação mas falharia no unique index do banco. A **normalização** (`Trim().ToUpperInvariant()`) garante que `"abc-001"`, `"ABC-001"` e `" ABC-001 "` sejam tratados como o mesmo SKU — essencial para consistência com o `Product.Create` que armazena o SKU normalizado. Sem isso, o InMemory provider (case-sensitive) não detectaria duplicatas que o SQL Server (case-insensitive por padrão) detectaria.
 
 ### 4.9 Catalog Infrastructure — DI Registration
 
@@ -2183,9 +2196,14 @@ using FluentValidation;
 
 namespace OrderFlow.Catalog.Api.Middleware;
 
-public sealed class GlobalExceptionHandler(
+public sealed partial class GlobalExceptionHandler(
     ILogger<GlobalExceptionHandler> logger) : IMiddleware
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
         try
@@ -2205,46 +2223,48 @@ public sealed class GlobalExceptionHandler(
             ValidationException validationEx => (
                 HttpStatusCode.BadRequest,
                 new ErrorResponse(
-                    "Validation Error",
+                    "Erro de Validação",
                     validationEx.Errors.Select(e => e.ErrorMessage).ToArray())),
 
             KeyNotFoundException notFoundEx => (
                 HttpStatusCode.NotFound,
-                new ErrorResponse("Not Found", [notFoundEx.Message])),
+                new ErrorResponse("Não Encontrado", [notFoundEx.Message])),
 
             InvalidOperationException invalidOpEx => (
                 HttpStatusCode.Conflict,
-                new ErrorResponse("Business Rule Violation", [invalidOpEx.Message])),
+                new ErrorResponse("Violação de Regra de Negócio", [invalidOpEx.Message])),
 
             ArgumentException argEx => (
                 HttpStatusCode.BadRequest,
-                new ErrorResponse("Invalid Argument", [argEx.Message])),
+                new ErrorResponse("Argumento Inválido", [argEx.Message])),
 
             _ => (
                 HttpStatusCode.InternalServerError,
-                new ErrorResponse("Internal Server Error", ["An unexpected error occurred."]))
+                new ErrorResponse("Erro Interno do Servidor", ["Ocorreu um erro inesperado."]))
         };
 
         if (statusCode == HttpStatusCode.InternalServerError)
         {
-            logger.LogError(exception, "Unhandled exception: {Message}", exception.Message);
+            LogUnhandledException(logger, exception, exception.Message);
         }
         else
         {
-            logger.LogWarning(exception, "Handled exception: {StatusCode} - {Message}",
-                (int)statusCode, exception.Message);
+            LogHandledException(logger, exception, (int)statusCode, exception.Message);
         }
 
         context.Response.StatusCode = (int)statusCode;
         context.Response.ContentType = "application/json";
 
-        var json = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+        var json = JsonSerializer.Serialize(errorResponse, JsonOptions);
 
         await context.Response.WriteAsync(json);
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception: {ExceptionMessage}")]
+    private static partial void LogUnhandledException(ILogger logger, Exception exception, string exceptionMessage);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Handled exception: {StatusCode} - {ExceptionMessage}")]
+    private static partial void LogHandledException(ILogger logger, Exception exception, int statusCode, string exceptionMessage);
 }
 
 public sealed record ErrorResponse(string Title, string[] Errors);
@@ -2271,23 +2291,29 @@ public sealed record ErrorResponse(string Title, string[] Errors);
 > ```
 > **Switch expression + desconstrução de tupla** — o C# resolve o tipo da exception e retorna status code + resposta em uma expressão. O `_` é o **discard pattern** (catch-all). A ordem importa: tipos mais específicos primeiro, genéricos depois.
 >
-> **Segurança importante:** Para `InternalServerError`, a mensagem genérica `"An unexpected error occurred."` **esconde detalhes internos**. Nunca exponha stack traces ou mensagens internas ao client — isso é information disclosure (OWASP). O log completo vai para o Serilog/Seq para debugging.
+> **Segurança importante:** Para `InternalServerError`, a mensagem genérica `"Ocorreu um erro inesperado."` **esconde detalhes internos**. Nunca exponha stack traces ou mensagens internas ao client — isso é information disclosure (OWASP). O log completo vai para o Serilog/Seq para debugging.
 >
 > ```csharp
-> logger.LogError(exception, "Unhandled exception: {Message}", exception.Message);
+> LogUnhandledException(logger, exception, exception.Message);
 > ```
-> Apenas erros 500 usam `LogError`. Erros 4xx usam `LogWarning` — eles são **esperados** (input inválido, recurso não encontrado). Isso evita alertas falsos no monitoramento.
+> Apenas erros 500 usam `LogError` (via `LogUnhandledException`). Erros 4xx usam `LogWarning` (via `LogHandledException`) — eles são **esperados** (input inválido, recurso não encontrado). Isso evita alertas falsos no monitoramento.
+>
+> **Por que `LoggerMessage` source-generated?** O atributo `[LoggerMessage]` gera código em compile-time que evita boxing de parâmetros e alocações de string em runtime. Com `TreatWarningsAsErrors=true`, os warnings CA1848/CA1873 bloqueiam o build se usar `logger.LogInformation()` diretamente — a classe precisa ser `partial` para que o source generator funcione.
+>
+> **Por que `JsonSerializerOptions` estático?** Instanciar `new JsonSerializerOptions` a cada request é custoso (reflection + cache interno). O campo `private static readonly` é criado uma vez e reutilizado. O warning CA1869 bloqueia o build se instanciar inline.
 
 ### 4.12 Catalog API — Program.cs
 
 **`src/Services/Catalog/OrderFlow.Catalog.Api/Program.cs`**
 
 ```csharp
+using Microsoft.EntityFrameworkCore;
 using OrderFlow.Catalog.Api.Middleware;
 using OrderFlow.Catalog.Infrastructure;
 using OrderFlow.Catalog.Infrastructure.Data;
 using Serilog;
 
+#pragma warning disable CA1305 // Serilog gerencia formatação internamente
 var builder = WebApplication.CreateBuilder(args);
 
 // === Serilog ===
@@ -2302,6 +2328,7 @@ builder.Host.UseSerilog((context, loggerConfig) =>
             outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
         .WriteTo.Seq(context.Configuration["Seq:Url"] ?? "http://localhost:5341");
 });
+#pragma warning restore CA1305
 
 // === Services ===
 builder.Services.AddControllers();
@@ -2391,6 +2418,18 @@ public partial class Program;
 > **Two-stage initialization** do Serilog — captura logs desde o início do startup, incluindo erros de configuração do EF Core ou DI. Se usasse `Log.Logger = ...` depois do `Build()`, perderia logs do bootstrap.
 >
 > ```csharp
+> #pragma warning disable CA1305
+> // ... chamadas Serilog WriteTo ...
+> #pragma warning restore CA1305
+> ```
+> **Pragma para CA1305** — os métodos `WriteTo.Console()` e `WriteTo.Seq()` do Serilog aceitam format strings sem `IFormatProvider`. Com `TreatWarningsAsErrors=true`, o warning CA1305 bloquearia o build. O `#pragma` suprime apenas nesse trecho — o Serilog gerencia formatação internamente.
+>
+> ```csharp
+> using Microsoft.EntityFrameworkCore;
+> ```
+> **Using para `MigrateAsync()`** — o método de extensão `MigrateAsync()` está em `Microsoft.EntityFrameworkCore`. Sem este using, o compilador não encontra o método (CS1061).
+>
+> ```csharp
 > builder.Services.AddTransient<GlobalExceptionHandler>();
 > ```
 > **Transient, não Scoped** — middlewares que implementam `IMiddleware` são resolvidos do DI a cada request. `Transient` garante que não há estado compartilhado entre requests. Se fosse `Singleton`, um `ILogger<T>` injetado poderia ter problemas com scoped services.
@@ -2465,27 +2504,34 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OrderFlow.Catalog.Infrastructure.Data;
 
 namespace OrderFlow.Catalog.Api.Tests;
 
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
+    private readonly string _dbName = "CatalogTestDb_" + Guid.NewGuid();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
         {
-            // Remove SQL Server registration
-            var descriptor = services.SingleOrDefault(
-                d => d.ServiceType == typeof(DbContextOptions<CatalogDbContext>));
+            // Remove all DbContext and options registrations
+            services.RemoveAll<CatalogDbContext>();
+            services.RemoveAll<DbContextOptions<CatalogDbContext>>();
 
-            if (descriptor is not null)
-                services.Remove(descriptor);
+            // Remove health checks that depend on SQL Server
+            services.RemoveAll<Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck>();
 
-            // Use InMemory database for tests
-            services.AddDbContext<CatalogDbContext>(options =>
+            // Register CatalogDbContext with InMemory provider using its own service provider
+            // (avoids conflict with SqlServer provider services in the DI container)
+            services.AddScoped(_ =>
             {
-                options.UseInMemoryDatabase("CatalogTestDb_" + Guid.NewGuid());
+                var options = new DbContextOptionsBuilder<CatalogDbContext>()
+                    .UseInMemoryDatabase(_dbName)
+                    .Options;
+                return new CatalogDbContext(options);
             });
         });
 
@@ -2502,12 +2548,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 >
 > 🔬 **Engenharia — Service replacement pattern:**
 > ```csharp
-> var descriptor = services.SingleOrDefault(
->     d => d.ServiceType == typeof(DbContextOptions<CatalogDbContext>));
-> if (descriptor is not null)
->     services.Remove(descriptor);
+> services.RemoveAll<CatalogDbContext>();
+> services.RemoveAll<DbContextOptions<CatalogDbContext>>();
 > ```
-> **Remove-and-replace** — remove o registro do SQL Server e adiciona InMemory. O `Guid.NewGuid()` no nome do banco garante isolamento entre testes — cada test class pega um banco vazio, sem interferência.
+> **RemoveAll + manual registration** — remove **todos** os registros do `CatalogDbContext` e suas opções (incluindo os serviços internos do provider SqlServer). Em seguida, registra manualmente via `AddScoped` com `new DbContextOptionsBuilder<CatalogDbContext>()` — isso evita o conflito de providers EF Core (SqlServer + InMemory registrados simultaneamente via `AddDbContext`), que causa o erro "Services for database providers 'SqlServer', 'InMemory' have been registered". O `Guid.NewGuid()` no nome do banco garante isolamento entre testes.
 
 **`tests/OrderFlow.Catalog.Api.Tests/CategoriesControllerTests.cs`**
 
@@ -2624,7 +2668,7 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
 
     private async Task<CategoryDto> CreateCategoryAsync()
     {
-        var request = new CreateCategoryRequest("Test Category", "Category for testing");
+        var request = new CreateCategoryRequest($"Test Category {Guid.NewGuid():N}"[..30], "Category for testing");
         var response = await _client.PostAsJsonAsync("/api/v1/categories", request);
         return (await response.Content.ReadFromJsonAsync<CategoryDto>())!;
     }
@@ -2733,6 +2777,16 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
 > $"MOUSE-{Guid.NewGuid():N}"[..20]
 > ```
 > **SKU único por teste** — `Guid.NewGuid()` gera unicidade, `:N` remove hífens, `[..20]` corta em 20 chars (limite do SKU). Sem isso, testes rodando em paralelo poderiam ter colisão de SKU e falhas intermitentes.
+>
+> ```csharp
+> $"Test Category {Guid.NewGuid():N}"[..30]
+> ```
+> **Categoria única por chamada** — o helper `CreateCategoryAsync` gera nomes únicos para cada invocação. Como `NameExistsAsync` rejeita duplicatas, usar um nome fixo como `"Test Category"` faria testes falharem com `409 Conflict` após a primeira chamada (todos os testes compartilham o mesmo banco InMemory via `WebApplicationFactory`).
+>
+> ```csharp
+> $"Test Category {Guid.NewGuid():N}"[..30]
+> ```
+> **Categoria única por chamada** — o helper `CreateCategoryAsync` gera nomes únicos para cada invocação. Como `NameExistsAsync` rejeita duplicatas, usar um nome fixo como `"Test Category"` faria testes falharem com `409 Conflict` após a primeira chamada (todos os testes compartilham o mesmo banco InMemory via `WebApplicationFactory`).
 
 ---
 

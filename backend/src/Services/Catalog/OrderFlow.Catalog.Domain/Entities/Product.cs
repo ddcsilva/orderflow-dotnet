@@ -28,10 +28,10 @@ public sealed class Product : AuditableEntity
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
 
         if (price < 0) 
-            throw new ArgumentException("Price cannot be negative.", nameof(price));
+            throw new ArgumentException("O preço não pode ser negativo.", nameof(price));
 
         if (stockQuantity < 0) 
-            throw new ArgumentException("Stock quantity cannot be negative.", nameof(stockQuantity));
+            throw new ArgumentException("A quantidade em estoque não pode ser negativa.", nameof(stockQuantity));
 
         return new Product
         {
@@ -51,9 +51,9 @@ public sealed class Product : AuditableEntity
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
         if (price < 0) 
-            throw new ArgumentException("Price cannot be negative.", nameof(price));
+            throw new ArgumentException("O preço não pode ser negativo.", nameof(price));
         if (stockQuantity < 0) 
-            throw new ArgumentException("Stock quantity cannot be negative.", nameof(stockQuantity));
+            throw new ArgumentException("A quantidade em estoque não pode ser negativa.", nameof(stockQuantity));
 
         Name = name.Trim();
         Description = description?.Trim();
@@ -65,7 +65,7 @@ public sealed class Product : AuditableEntity
     public void ChangeCategory(Guid newCategoryId)
     {
         if (newCategoryId == Guid.Empty)
-            throw new ArgumentException("Category ID cannot be empty.", nameof(newCategoryId));
+            throw new ArgumentException("O ID da categoria não pode ser vazio.", nameof(newCategoryId));
 
         CategoryId = newCategoryId;
         SetUpdated();
@@ -89,7 +89,7 @@ public sealed class Product : AuditableEntity
     {
         if (!HasSufficientStock(quantity))
             throw new InvalidOperationException(
-                $"Insufficient stock. Available: {StockQuantity}, Requested: {quantity}");
+                $"Estoque insuficiente. Disponível: {StockQuantity}, Solicitado: {quantity}");
 
         StockQuantity -= quantity;
         SetUpdated();
@@ -98,7 +98,7 @@ public sealed class Product : AuditableEntity
     public void IncreaseStock(int quantity)
     {
         if (quantity <= 0)
-            throw new ArgumentException("Quantity must be positive.", nameof(quantity));
+            throw new ArgumentException("A quantidade deve ser positiva.", nameof(quantity));
 
         StockQuantity += quantity;
         SetUpdated();
