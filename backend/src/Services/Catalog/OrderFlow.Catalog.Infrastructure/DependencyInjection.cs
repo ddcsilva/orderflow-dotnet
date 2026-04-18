@@ -17,7 +17,7 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // EF Core
+        // Banco de Dados (EF Core)
         services.AddDbContext<CatalogDbContext>(options =>
             options.UseSqlServer(
                 configuration.GetConnectionString("CatalogDb"),
@@ -30,18 +30,18 @@ public static class DependencyInjection
                         errorNumbersToAdd: null);
                 }));
 
-        // Unit of Work
+        // Unidade de Trabalho
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CatalogDbContext>());
 
-        // Repositories
+        // Repositórios
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
 
-        // Services
+        // Serviços
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
 
-        // Validators
+        // Validadores
         services.AddValidatorsFromAssemblyContaining<Application.Validators.CreateProductValidator>();
 
         return services;

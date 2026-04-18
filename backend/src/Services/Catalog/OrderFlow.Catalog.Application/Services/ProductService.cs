@@ -118,12 +118,12 @@ public sealed partial class ProductService(
         product.CreatedAt,
         product.UpdatedAt);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Product created: {ProductId} - {ProductName}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Produto criado: {ProductId} - {ProductName}")]
     private static partial void LogProductCreated(ILogger logger, Guid productId, string productName);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Product updated: {ProductId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Produto atualizado: {ProductId}")]
     private static partial void LogProductUpdated(ILogger logger, Guid productId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Product deactivated: {ProductId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Produto desativado: {ProductId}")]
     private static partial void LogProductDeactivated(ILogger logger, Guid productId);
 }

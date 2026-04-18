@@ -755,7 +755,7 @@
     <li><strong>Enrichers</strong> — Adiciona automaticamente <code>CorrelationId</code>, <code>MachineName</code>, <code>ThreadId</code></li>
     <li><strong>Templates</strong> — Formato de saída customizável por ambiente</li>
 </ul>
-<p><strong>Código limpo:</strong> Seus services continuam usando <code>ILogger&lt;T&gt;</code> (a abstração do .NET). Serilog é configurado <strong>apenas no Program.cs</strong>. Se amanhã quiser trocar por OpenTelemetry Logging ou NLog, muda um arquivo.</p>
+<p><strong>Código limpo:</strong> Seus services continuam usando <code>ILogger&lt;T&gt;</code> (a abstração do .NET). Serilog é configurado <strong>apenas no <code>HostingExtensions.cs</code></strong> via extension method. Se amanhã quiser trocar por OpenTelemetry Logging ou NLog, muda um arquivo.</p>
 
 <div class="divider"></div>
 
@@ -1641,7 +1641,7 @@ docker compose ps              # Status dos containers</code></pre>
         <span class="kw">await</span> unitOfWork.<span class="fn">SaveChangesAsync</span>(ct);
     }
 
-    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Information, Message = <span class="str">"Product created: {ProductId} - {ProductName}"</span>)]
+    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Information, Message = <span class="str">"Produto criado: {ProductId} - {ProductName}"</span>)]
     <span class="kw">private static partial void</span> <span class="fn">LogProductCreated</span>(<span class="tp">ILogger</span> logger, <span class="tp">Guid</span> productId, <span class="kw">string</span> productName);
     <span class="cm">// ... GetByIdAsync, GetBySkuAsync, SearchAsync, UpdateAsync ...</span>
 }</code></pre>
@@ -1945,90 +1945,122 @@ docker compose ps              # Status dos containers</code></pre>
     <p>Para erro 500, a mensagem é genérica: <code>"Ocorreu um erro inesperado."</code> — <strong>nunca exponha stack traces ao client</strong> (OWASP). O log completo vai para Serilog/Seq. Erros 4xx usam <code>LogWarning</code> (esperados), não <code>LogError</code> — evita alertas falsos. A classe é <code>partial</code> para suportar os métodos <code>[LoggerMessage]</code> gerados em compile-time. <code>JsonSerializerOptions</code> é cachedo em <code>static readonly</code> para evitar alocações repetidas (CA1869).</p>
 </div>
 
-<!-- ====== 4.12 Program.cs ====== -->
-<h3>4.12 Catalog API — Program.cs</h3>
+<!-- ====== 4.12 HostingExtensions ====== -->
+<h3>4.12 Extension Methods de Hosting</h3>
 
-<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Program.cs</div>
-<pre><code><span class="kw">using</span> <span class="tp">Microsoft.EntityFrameworkCore</span>;
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Extensions/HostingExtensions.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">System.Diagnostics.CodeAnalysis</span>;
+<span class="kw">using</span> <span class="tp">Microsoft.EntityFrameworkCore</span>;
 <span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Api.Middleware</span>;
 <span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Infrastructure</span>;
 <span class="kw">using</span> <span class="tp">Serilog</span>;
 
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Api.Extensions</span>;
+
+<span class="kw">internal static class</span> <span class="tp">HostingExtensions</span>
+{
+    [<span class="at">SuppressMessage</span>(<span class="str">"Globalization"</span>, <span class="str">"CA1305:Specify IFormatProvider"</span>,
+        Justification = <span class="str">"Serilog gerencia formatação de strings internamente"</span>)]
+    <span class="kw">internal static</span> <span class="tp">WebApplicationBuilder</span> <span class="fn">AddSerilog</span>(
+        <span class="kw">this</span> <span class="tp">WebApplicationBuilder</span> builder)
+    {
+        builder.Services.<span class="fn">AddSerilog</span>((services, loggerConfig) =&gt;
+        {
+            loggerConfig
+                .<span class="fn">ReadFrom</span>.<span class="fn">Configuration</span>(builder.Configuration)
+                .<span class="fn">ReadFrom</span>.<span class="fn">Services</span>(services)
+                .<span class="fn">Enrich</span>.<span class="fn">FromLogContext</span>()
+                .<span class="fn">Enrich</span>.<span class="fn">WithEnvironmentName</span>()
+                .<span class="fn">Enrich</span>.<span class="fn">WithThreadId</span>()
+                .<span class="fn">WriteTo</span>.<span class="fn">Console</span>(outputTemplate:
+                    <span class="str">"[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"</span>)
+                .<span class="fn">WriteTo</span>.<span class="fn">Seq</span>(builder.Configuration[<span class="str">"Seq:Url"</span>] ?? <span class="str">"http://localhost:5341"</span>);
+        });
+        <span class="kw">return</span> builder;
+    }
+
+    <span class="kw">internal static</span> <span class="tp">WebApplicationBuilder</span> <span class="fn">AddApiServices</span>(
+        <span class="kw">this</span> <span class="tp">WebApplicationBuilder</span> builder)
+    {
+        builder.Services.<span class="fn">AddControllers</span>();
+        builder.Services.<span class="fn">AddEndpointsApiExplorer</span>();
+        builder.Services.<span class="fn">AddSwaggerGen</span>(options =&gt;
+        {
+            options.<span class="fn">SwaggerDoc</span>(<span class="str">"v1"</span>, <span class="kw">new</span>()
+            {
+                Title = <span class="str">"OrderFlow Catalog API"</span>,
+                Version = <span class="str">"v1"</span>,
+                Description = <span class="str">"API para gerenciamento do catálogo de produtos e categorias."</span>
+            });
+        });
+        builder.Services.<span class="fn">AddCatalogInfrastructure</span>(builder.Configuration);
+        builder.Services.<span class="fn">AddTransient</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt;();
+        builder.Services.<span class="fn">AddHealthChecks</span>()
+            .<span class="fn">AddSqlServer</span>(
+                builder.Configuration.<span class="fn">GetConnectionString</span>(<span class="str">"CatalogDb"</span>)!,
+                name: <span class="str">"sqlserver"</span>, tags: [<span class="str">"db"</span>, <span class="str">"ready"</span>]);
+        <span class="kw">return</span> builder;
+    }
+
+    <span class="kw">internal static</span> <span class="tp">WebApplication</span> <span class="fn">ConfigurePipeline</span>(
+        <span class="kw">this</span> <span class="tp">WebApplication</span> app)
+    {
+        <span class="kw">if</span> (app.Environment.<span class="fn">IsDevelopment</span>())
+        { app.<span class="fn">UseSwagger</span>(); app.<span class="fn">UseSwaggerUI</span>(); }
+
+        app.<span class="fn">UseMiddleware</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt;();
+        app.<span class="fn">UseSerilogRequestLogging</span>();
+        app.<span class="fn">MapControllers</span>();
+        app.<span class="fn">MapHealthChecks</span>(<span class="str">"/health/ready"</span>, <span class="kw">new</span>()
+            { Predicate = check =&gt; check.Tags.<span class="fn">Contains</span>(<span class="str">"ready"</span>) });
+        app.<span class="fn">MapHealthChecks</span>(<span class="str">"/health/live"</span>, <span class="kw">new</span>()
+            { Predicate = _ =&gt; <span class="kw">false</span> });
+        <span class="kw">return</span> app;
+    }
+
+    <span class="kw">internal static async</span> <span class="tp">Task</span> <span class="fn">ApplyMigrationsAsync</span>(
+        <span class="kw">this</span> <span class="tp">WebApplication</span> app)
+    {
+        <span class="kw">if</span> (!app.Environment.<span class="fn">IsDevelopment</span>()) <span class="kw">return</span>;
+        <span class="kw">using var</span> scope = app.Services.<span class="fn">CreateScope</span>();
+        <span class="kw">var</span> db = scope.ServiceProvider.<span class="fn">GetRequiredService</span>&lt;<span class="tp">CatalogDbContext</span>&gt;();
+        <span class="kw">await</span> db.Database.<span class="fn">MigrateAsync</span>();
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Extension Methods + [SuppressMessage] vs #pragma</div>
+    <p><strong><code>[SuppressMessage]</code></strong> é superior ao <code>#pragma warning disable</code> por ser <strong>declarativo</strong> (metadata no método), <strong>auto-documentado</strong> (campo <code>Justification</code>) e com <strong>escopo preciso</strong> (apenas o método decorado).</p>
+    <p><strong><code>builder.Services.AddSerilog()</code></strong> — API moderna (Serilog.AspNetCore 10+) que registra via <code>IServiceCollection</code>, com acesso ao <code>IServiceProvider</code> via <code>ReadFrom.Services(services)</code>.</p>
+    <p>Cada extension method encapsula <strong>uma área de responsabilidade</strong>. Quando o projeto cresce, pode-se subdividir sem poluir o <code>Program.cs</code>.</p>
+</div>
+
+<!-- ====== 4.13 Program.cs ====== -->
+<h3>4.13 Catalog API — Program.cs</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Program.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Api.Extensions</span>;
+
 <span class="kw">var</span> builder = <span class="tp">WebApplication</span>.<span class="fn">CreateBuilder</span>(args);
 
-<span class="cm">// === Serilog (configurado primeiro para capturar erros de startup) ===</span>
-<span class="pp">#pragma warning disable CA1305</span>
-builder.Host.<span class="fn">UseSerilog</span>((context, loggerConfig) =&gt;
-{
-    loggerConfig
-        .<span class="fn">ReadFrom</span>.<span class="fn">Configuration</span>(context.Configuration)
-        .<span class="fn">Enrich</span>.<span class="fn">FromLogContext</span>()
-        .<span class="fn">Enrich</span>.<span class="fn">WithEnvironmentName</span>()
-        .<span class="fn">Enrich</span>.<span class="fn">WithThreadId</span>()
-        .<span class="fn">WriteTo</span>.<span class="fn">Console</span>(outputTemplate:
-            <span class="str">"[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"</span>)
-        .<span class="fn">WriteTo</span>.<span class="fn">Seq</span>(context.Configuration[<span class="str">"Seq:Url"</span>] ?? <span class="str">"http://localhost:5341"</span>);
-});
-<span class="pp">#pragma warning restore CA1305</span>
-
-<span class="cm">// === Services ===</span>
-builder.Services.<span class="fn">AddControllers</span>();
-builder.Services.<span class="fn">AddEndpointsApiExplorer</span>();
-builder.Services.<span class="fn">AddSwaggerGen</span>();
-builder.Services.<span class="fn">AddCatalogInfrastructure</span>(builder.Configuration);
-builder.Services.<span class="fn">AddTransient</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt;();
-
-<span class="cm">// === Health Checks ===</span>
-builder.Services.<span class="fn">AddHealthChecks</span>()
-    .<span class="fn">AddSqlServer</span>(
-        builder.Configuration.<span class="fn">GetConnectionString</span>(<span class="str">"CatalogDb"</span>)!,
-        name: <span class="str">"sqlserver"</span>, tags: [<span class="str">"db"</span>, <span class="str">"ready"</span>]);
+builder.<span class="fn">AddSerilog</span>();
+builder.<span class="fn">AddApiServices</span>();
 
 <span class="kw">var</span> app = builder.<span class="fn">Build</span>();
 
-<span class="cm">// === Middleware Pipeline ===</span>
-<span class="kw">if</span> (app.Environment.<span class="fn">IsDevelopment</span>())
-{
-    app.<span class="fn">UseSwagger</span>();
-    app.<span class="fn">UseSwaggerUI</span>();
-}
-
-app.<span class="fn">UseMiddleware</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt;();
-app.<span class="fn">UseSerilogRequestLogging</span>();
-app.<span class="fn">MapControllers</span>();
-
-<span class="cm">// Readiness: verifica SQL Server</span>
-app.<span class="fn">MapHealthChecks</span>(<span class="str">"/health/ready"</span>, <span class="kw">new</span>()
-{
-    Predicate = check =&gt; check.Tags.<span class="fn">Contains</span>(<span class="str">"ready"</span>)
-});
-
-<span class="cm">// Liveness: apenas verifica se o processo responde</span>
-app.<span class="fn">MapHealthChecks</span>(<span class="str">"/health/live"</span>, <span class="kw">new</span>()
-{
-    Predicate = _ =&gt; <span class="kw">false</span>
-});
-
-<span class="cm">// Auto-migrate apenas em Development</span>
-<span class="kw">if</span> (app.Environment.<span class="fn">IsDevelopment</span>())
-{
-    <span class="kw">using var</span> scope = app.Services.<span class="fn">CreateScope</span>();
-    <span class="kw">var</span> db = scope.ServiceProvider.<span class="fn">GetRequiredService</span>&lt;<span class="tp">CatalogDbContext</span>&gt;();
-    <span class="kw">await</span> db.Database.<span class="fn">MigrateAsync</span>();
-}
+app.<span class="fn">ConfigurePipeline</span>();
+<span class="kw">await</span> app.<span class="fn">ApplyMigrationsAsync</span>();
 
 app.<span class="fn">Run</span>();
 
-<span class="kw">public partial class</span> <span class="tp">Program</span>; <span class="cm">// WebApplicationFactory nos testes</span></code></pre>
+<span class="kw">public partial class</span> <span class="tp">Program</span>;</code></pre>
 
 <div class="callout callout--eng">
-    <div class="callout-title">🔬 Detalhes que Importam no Program.cs</div>
+    <div class="callout-title">🔬 Program.cs como índice da aplicação</div>
+    <p>Com extension methods, o <code>Program.cs</code> se torna um <strong>índice de 15 linhas</strong> que conta a história do serviço: <code>AddSerilog()</code> → <code>AddApiServices()</code> → <code>ConfigurePipeline()</code> → <code>ApplyMigrationsAsync()</code>.</p>
     <p><strong>Ordem dos middlewares:</strong> Exception handler <strong>antes</strong> do Serilog request logging — exceções são convertidas em respostas HTTP antes de serem logadas.</p>
-    <p><strong>Health Checks:</strong> <code>/health/live</code> com <code>Predicate = _ =&gt; false</code> ignora todos os checks — apenas verifica se o processo responde. <code>/health/ready</code> verifica SQL Server.</p>
     <p><strong>Auto-migrate apenas em Development.</strong> Em produção, migrations via CI/CD — nunca na startup (múltiplas instâncias migrando ao mesmo tempo = problema).</p>
     <p><strong><code>public partial class Program;</code></strong> — permite <code>WebApplicationFactory&lt;Program&gt;</code> nos testes de integração.</p>
-    <p><strong><code>#pragma warning disable CA1305</code></strong> — necessário ao redor do bloco <code>UseSerilog</code> porque os métodos <code>WriteTo.Console</code> e <code>WriteTo.Seq</code> internamente usam formatação sem <code>IFormatProvider</code>, gerando CA1305 com <code>TreatWarningsAsErrors=true</code>.</p>
-    <p><strong><code>using Microsoft.EntityFrameworkCore;</code></strong> — necessário para o <code>MigrateAsync()</code> (extension method de EF Core).</p>
 </div>
 
 <div class="divider"></div>
@@ -2074,56 +2106,75 @@ app.<span class="fn">Run</span>();
 
 <h3>Exemplos de Testes</h3>
 
+<div class="code-filepath">tests/OrderFlow.Catalog.Api.Tests/CategoriesControllerTests.cs</div>
+<pre><code><span class="kw">public class</span> <span class="tp">CategoriesControllerTests</span>(<span class="tp">CustomWebApplicationFactory</span> factory)
+    : <span class="tp">IClassFixture</span>&lt;<span class="tp">CustomWebApplicationFactory</span>&gt;
+{
+    <span class="kw">private readonly</span> <span class="tp">HttpClient</span> _client = factory.<span class="fn">CreateClient</span>();
+
+    <span class="kw">private async</span> <span class="tp">Task</span>&lt;<span class="tp">CategoryDto</span>&gt; <span class="fn">CreateCategoryAsync</span>(
+        <span class="kw">string</span>? name = <span class="kw">null</span>)
+    {
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateCategoryRequest</span>(
+            name ?? $<span class="str">"Categoria {Guid.NewGuid():N}"</span>[..<span class="num">30</span>],
+            <span class="str">"Descrição de teste"</span>);
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/categories"</span>, request);
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
+        <span class="kw">return</span> (<span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">CategoryDto</span>&gt;())!;
+    }
+
+    <span class="cm">// 8 testes: Create, GetAll, GetById, Update, Delete,</span>
+    <span class="cm">//           DuplicateName(409), EmptyName(400), NotFound(404)</span>
+}</code></pre>
+
 <div class="code-filepath">tests/OrderFlow.Catalog.Api.Tests/ProductsControllerTests.cs</div>
 <pre><code><span class="kw">public class</span> <span class="tp">ProductsControllerTests</span>(<span class="tp">CustomWebApplicationFactory</span> factory)
     : <span class="tp">IClassFixture</span>&lt;<span class="tp">CustomWebApplicationFactory</span>&gt;
 {
     <span class="kw">private readonly</span> <span class="tp">HttpClient</span> _client = factory.<span class="fn">CreateClient</span>();
 
-    [<span class="at">Fact</span>]
-    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_ValidProduct_ReturnsCreated</span>()
+    <span class="kw">private async</span> <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>&gt; <span class="fn">CreateProductAsync</span>(
+        <span class="tp">Guid</span> categoryId, <span class="kw">string</span>? sku = <span class="kw">null</span>)
     {
-        <span class="cm">// Arrange</span>
-        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
         <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateProductRequest</span>(
-            <span class="str">"Laptop Pro"</span>, <span class="str">"High-performance"</span>,
-            <span class="str">"LAPTOP-001"</span>, <span class="num">2999.99m</span>, <span class="num">10</span>, category.Id);
-
-        <span class="cm">// Act</span>
+            <span class="str">"Produto Teste"</span>, <span class="str">"Descrição de teste"</span>,
+            sku ?? $<span class="str">"SKU-{Guid.NewGuid():N}"</span>[..<span class="num">20</span>],
+            <span class="num">99.99m</span>, <span class="num">10</span>, categoryId);
         <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
             <span class="str">"/api/v1/products"</span>, request);
-
-        <span class="cm">// Assert</span>
         response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
-        <span class="kw">var</span> product = <span class="kw">await</span> response.Content
-            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">ProductDto</span>&gt;();
-        product!.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"Laptop Pro"</span>);
-        product.Sku.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"LAPTOP-001"</span>);
+        <span class="kw">return</span> (<span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">ProductDto</span>&gt;())!;
     }
 
     [<span class="at">Fact</span>]
-    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Delete_ExistingProduct_SoftDeletes</span>()
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Delete_ExistingProduct_ReturnsNoContent</span>()
     {
-        <span class="cm">// Arrange: create product</span>
         <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
-        <span class="kw">var</span> created = <span class="cm">/* create product */</span>;
+        <span class="kw">var</span> created = <span class="kw">await</span> <span class="fn">CreateProductAsync</span>(category.Id);
 
-        <span class="cm">// Act: delete (soft)</span>
         <span class="kw">var</span> response = <span class="kw">await</span> _client
             .<span class="fn">DeleteAsync</span>($<span class="str">"/api/v1/products/{created.Id}"</span>);
         response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NoContent);
 
-        <span class="cm">// Assert: product disappears (query filter)</span>
+        <span class="cm">// Verifica soft-delete (filtrado pelo query filter)</span>
         <span class="kw">var</span> getResponse = <span class="kw">await</span> _client
             .<span class="fn">GetAsync</span>($<span class="str">"/api/v1/products/{created.Id}"</span>);
         getResponse.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NotFound);
     }
+
+    <span class="cm">// 9 testes: Create, GetById, Search, Update, Delete,</span>
+    <span class="cm">//           DuplicateSku(409), EmptyName(400), InvalidCategory(404), NotFound(404)</span>
 }</code></pre>
 
 <div class="callout callout--eng">
-    <div class="callout-title">🔬 Padrão AAA e FluentAssertions</div>
-    <p><strong>Arrange-Act-Assert</strong> — cada teste segue essa estrutura. <strong>FluentAssertions</strong> (<code>.Should().Be()</code>) é mais legível que <code>Assert.Equal()</code> e gera mensagens de erro melhores.</p>
-    <p>O teste de soft delete verifica o <strong>fluxo completo</strong>: Controller → Service → Entity.Deactivate → SaveChanges → QueryFilter esconde.</p>
+    <div class="callout-title">🔬 Boas Práticas nos Testes</div>
+    <p><strong>Helper methods com asserções (fail-fast)</strong> — <code>CreateCategoryAsync</code> e <code>CreateProductAsync</code> incluem <code>Should().Be(Created)</code>. Se o setup falha, o erro é imediato e claro.</p>
+    <p><strong>Dados únicos por teste</strong> — <code>Guid.NewGuid()</code> gera unicidade em SKUs e nomes de categorias, evitando colisões entre testes que compartilham o mesmo banco InMemory.</p>
+    <p><strong>17 testes no total</strong> (8 Categories + 9 Products) cobrindo: happy path (CRUD completo), edge cases (duplicatas, validação, IDs inexistentes) e soft delete end-to-end.</p>
+    <p><strong>FluentAssertions</strong> (<code>.Should().Be()</code>) é mais legível que <code>Assert.Equal()</code> e gera mensagens de erro melhores quando falha.</p>
 </div>
 
 <div class="divider"></div>

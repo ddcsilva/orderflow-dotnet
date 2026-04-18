@@ -140,7 +140,7 @@ O `ILogger` do Microsoft.Extensions.Logging é a **abstração** — como uma in
 - **Enrichers** — Adiciona automaticamente `CorrelationId`, `MachineName`, `ThreadId` — sem poluir seu código
 - **Templates** — Formato de saída customizável por ambiente (JSON em produção, texto colorido em dev)
 
-**Código limpo:** Seus services continuam usando `ILogger<T>` (a abstração do .NET). Serilog é configurado **apenas no Program.cs**. Se amanhã quiser trocar por OpenTelemetry Logging ou NLog, muda um arquivo. Seus 200 services não sabem e não se importam — isso é o poder da abstração.
+**Código limpo:** Seus services continuam usando `ILogger<T>` (a abstração do .NET). Serilog é configurado **apenas no `HostingExtensions.cs`** via extension method. Se amanhã quiser trocar por OpenTelemetry Logging ou NLog, muda um arquivo. Seus 200 services não sabem e não se importam — isso é o poder da abstração.
 
 ---
 
@@ -295,7 +295,7 @@ Crie `Directory.Packages.props` na raiz:
 > **Logging:**
 > | Pacote | Responsabilidade |
 > |--------|-----------------|
-> | `Serilog.AspNetCore` | Integra Serilog ao pipeline do ASP.NET Core — substitui o logger padrão, adiciona request logging (`UseSerilogRequestLogging`) |
+> | `Serilog.AspNetCore` | Integra Serilog ao pipeline do ASP.NET Core — registra via `AddSerilog()`, adiciona request logging (`UseSerilogRequestLogging`) |
 > | `Serilog.Sinks.Console` | **Sink** que escreve logs no console. Em dev, exibe com cores e formato legível; em containers, usa JSON para coleta automatizada |
 > | `Serilog.Sinks.Seq` | **Sink** que envia logs para o **Seq** — uma UI web para buscar, filtrar e analisar logs estruturados (como um "Google para seus logs") |
 > | `Serilog.Enrichers.Environment` | **Enricher** que adiciona `MachineName` e `EnvironmentName` automaticamente a cada log — útil para distinguir logs de dev/staging/prod |
@@ -1517,13 +1517,13 @@ public sealed partial class ProductService(
         product.CreatedAt,
         product.UpdatedAt);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Product created: {ProductId} - {ProductName}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Produto criado: {ProductId} - {ProductName}")]
     private static partial void LogProductCreated(ILogger logger, Guid productId, string productName);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Product updated: {ProductId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Produto atualizado: {ProductId}")]
     private static partial void LogProductUpdated(ILogger logger, Guid productId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Product deactivated: {ProductId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Produto desativado: {ProductId}")]
     private static partial void LogProductDeactivated(ILogger logger, Guid productId);
 }
 ```
@@ -1960,9 +1960,9 @@ public static class DependencyInjection
 
 > 🏛️ **Nota Arquitetural — Composition Root: onde tudo se conecta**
 >
-> Este arquivo é o **Composition Root** do microserviço — o único lugar que conhece **todas as camadas**. Ele registra quem implementa o quê. O `Program.cs` chama `AddCatalogInfrastructure()` e pronto — não precisa saber de `ProductRepository` ou `CatalogDbContext`.
+> Este arquivo é o **Composition Root** do microserviço — o único lugar que conhece **todas as camadas**. Ele registra quem implementa o quê. O `HostingExtensions.AddApiServices()` chama `AddCatalogInfrastructure()` e pronto — não precisa saber de `ProductRepository` ou `CatalogDbContext`.
 >
-> **Por que extension method em `IServiceCollection`?** Encapsula toda a configuração do módulo em um método fluente. Se o Catalog crescer, pode dividir em `AddCatalogRepositories()`, `AddCatalogServices()`, etc.
+> **Por que extension method em `IServiceCollection`?** Encapsula toda a configuração do módulo em um método fluente. Se o Catalog crescer, pode dividir em `AddCatalogRepositories()`, `AddCatalogServices()`, etc. O mesmo padrão é aplicado no `HostingExtensions` para manter o `Program.cs` limpo e legível.
 >
 > 🔬 **Nota de Engenharia — Lifetimes e suas implicações**
 >
@@ -2260,10 +2260,10 @@ public sealed partial class GlobalExceptionHandler(
         await context.Response.WriteAsync(json);
     }
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception: {ExceptionMessage}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Exceção não tratada: {ExceptionMessage}")]
     private static partial void LogUnhandledException(ILogger logger, Exception exception, string exceptionMessage);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Handled exception: {StatusCode} - {ExceptionMessage}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Exceção tratada: {StatusCode} - {ExceptionMessage}")]
     private static partial void LogHandledException(ILogger logger, Exception exception, int statusCode, string exceptionMessage);
 }
 
@@ -2302,96 +2302,148 @@ public sealed record ErrorResponse(string Title, string[] Errors);
 >
 > **Por que `JsonSerializerOptions` estático?** Instanciar `new JsonSerializerOptions` a cada request é custoso (reflection + cache interno). O campo `private static readonly` é criado uma vez e reutilizado. O warning CA1869 bloqueia o build se instanciar inline.
 
-### 4.12 Catalog API — Program.cs
+### 4.12 Catalog API — Extension Methods de Hosting
 
-**`src/Services/Catalog/OrderFlow.Catalog.Api/Program.cs`**
+**`src/Services/Catalog/OrderFlow.Catalog.Api/Extensions/HostingExtensions.cs`**
 
 ```csharp
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.EntityFrameworkCore;
 using OrderFlow.Catalog.Api.Middleware;
 using OrderFlow.Catalog.Infrastructure;
 using OrderFlow.Catalog.Infrastructure.Data;
 using Serilog;
 
-#pragma warning disable CA1305 // Serilog gerencia formatação internamente
+namespace OrderFlow.Catalog.Api.Extensions;
+
+internal static class HostingExtensions
+{
+    [SuppressMessage("Globalization", "CA1305:Specify IFormatProvider",
+        Justification = "Serilog gerencia formatação de strings internamente — falso positivo")]
+    internal static WebApplicationBuilder AddSerilog(this WebApplicationBuilder builder)
+    {
+        builder.Services.AddSerilog((services, loggerConfig) =>
+        {
+            loggerConfig
+                .ReadFrom.Configuration(builder.Configuration)
+                .ReadFrom.Services(services)
+                .Enrich.FromLogContext()
+                .Enrich.WithEnvironmentName()
+                .Enrich.WithThreadId()
+                .WriteTo.Console(
+                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+                .WriteTo.Seq(builder.Configuration["Seq:Url"] ?? "http://localhost:5341");
+        });
+
+        return builder;
+    }
+
+    internal static WebApplicationBuilder AddApiServices(this WebApplicationBuilder builder)
+    {
+        builder.Services.AddControllers();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(options =>
+        {
+            options.SwaggerDoc("v1", new()
+            {
+                Title = "OrderFlow Catalog API",
+                Version = "v1",
+                Description = "API para gerenciamento do catálogo de produtos e categorias."
+            });
+        });
+
+        builder.Services.AddCatalogInfrastructure(builder.Configuration);
+        builder.Services.AddTransient<GlobalExceptionHandler>();
+
+        builder.Services.AddHealthChecks()
+            .AddSqlServer(
+                builder.Configuration.GetConnectionString("CatalogDb")!,
+                name: "sqlserver",
+                tags: ["db", "ready"]);
+
+        return builder;
+    }
+
+    internal static WebApplication ConfigurePipeline(this WebApplication app)
+    {
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
+
+        app.UseMiddleware<GlobalExceptionHandler>();
+        app.UseSerilogRequestLogging();
+
+        app.MapControllers();
+
+        app.MapHealthChecks("/health/ready", new()
+        {
+            Predicate = check => check.Tags.Contains("ready")
+        });
+
+        app.MapHealthChecks("/health/live", new()
+        {
+            Predicate = _ => false
+        });
+
+        return app;
+    }
+
+    internal static async Task ApplyMigrationsAsync(this WebApplication app)
+    {
+        if (!app.Environment.IsDevelopment())
+            return;
+
+        using var scope = app.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
+}
+```
+
+> 🏛️ **Nota Arquitetural — Extension Methods para um Program.cs limpo**
+>
+> O `HostingExtensions` extrai toda a configuração do `Program.cs` para métodos de extensão, seguindo o mesmo padrão que o `AddCatalogInfrastructure` na camada Infrastructure. Cada método tem **uma responsabilidade**:
+> - **`AddSerilog()`** — configura o pipeline de logging
+> - **`AddApiServices()`** — registra controllers, Swagger, DI, health checks
+> - **`ConfigurePipeline()`** — configura middlewares e endpoints
+> - **`ApplyMigrationsAsync()`** — aplica migrations em desenvolvimento
+>
+> **Por que `internal static`?** A classe é `internal` porque é um detalhe de implementação do projeto Api — nenhum outro projeto precisa acessá-la. Os métodos são `static` porque são extension methods puros, sem estado.
+>
+> 🔬 **Nota de Engenharia — `[SuppressMessage]` vs `#pragma warning`**
+>
+> ```csharp
+> [SuppressMessage("Globalization", "CA1305:Specify IFormatProvider",
+>     Justification = "Serilog gerencia formatação de strings internamente — falso positivo")]
+> ```
+>
+> O atributo `[SuppressMessage]` é **superior** ao `#pragma warning disable/restore` por três motivos:
+> 1. **Declarativo** — aparece como metadata no método, não como diretiva de pré-processador
+> 2. **Auto-documentado** — o campo `Justification` explica *por que* a supressão é necessária
+> 3. **Escopo preciso** — suprime apenas para o método decorado, enquanto `#pragma` afeta todo o bloco de código entre disable/restore
+>
+> Os métodos `WriteTo.Console()` e `WriteTo.Seq()` do Serilog aceitam format strings sem `IFormatProvider`. Com `TreatWarningsAsErrors=true`, o warning CA1305 bloquearia o build — mas o Serilog gerencia formatação internamente, tornando a supressão segura.
+>
+> **`builder.Services.AddSerilog()` vs `builder.Host.UseSerilog()`** — a API moderna `AddSerilog` (Serilog.AspNetCore 10+) registra o Serilog como logging provider via `IServiceCollection`, alinhado com o padrão de DI do .NET. O lambda `(services, loggerConfig)` dá acesso ao `IServiceProvider`, permitindo `ReadFrom.Services(services)` para enrichers baseados em DI.
+
+### 4.13 Catalog API — Program.cs
+
+**`src/Services/Catalog/OrderFlow.Catalog.Api/Program.cs`**
+
+```csharp
+using OrderFlow.Catalog.Api.Extensions;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// === Serilog ===
-builder.Host.UseSerilog((context, loggerConfig) =>
-{
-    loggerConfig
-        .ReadFrom.Configuration(context.Configuration)
-        .Enrich.FromLogContext()
-        .Enrich.WithEnvironmentName()
-        .Enrich.WithThreadId()
-        .WriteTo.Console(
-            outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-        .WriteTo.Seq(context.Configuration["Seq:Url"] ?? "http://localhost:5341");
-});
-#pragma warning restore CA1305
-
-// === Services ===
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new()
-    {
-        Title = "OrderFlow Catalog API",
-        Version = "v1",
-        Description = "API for managing product catalog and categories."
-    });
-});
-
-// Catalog Infrastructure (EF Core, Repositories, Services, Validators)
-builder.Services.AddCatalogInfrastructure(builder.Configuration);
-
-// Global Exception Handler
-builder.Services.AddTransient<GlobalExceptionHandler>();
-
-// Health Checks
-// 💡 Health Checks são como o "check-up médico" do seu serviço.
-// Liveness = "O coração está batendo?" (processo vivo)
-// Readiness = "O paciente está pronto pra receber visitas?" (dependências OK)
-// Se o Liveness falhar → Kubernetes reinicia o container (ressuscita o paciente).
-// Se o Readiness falhar → Load balancer para de enviar tráfego (paciente em recuperação).
-builder.Services.AddHealthChecks()
-    .AddSqlServer(
-        builder.Configuration.GetConnectionString("CatalogDb")!,
-        name: "sqlserver",
-        tags: ["db", "ready"]);
+builder.AddSerilog();
+builder.AddApiServices();
 
 var app = builder.Build();
 
-// === Middleware Pipeline ===
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseMiddleware<GlobalExceptionHandler>();
-app.UseSerilogRequestLogging();
-
-app.MapControllers();
-
-app.MapHealthChecks("/health/ready", new()
-{
-    Predicate = check => check.Tags.Contains("ready")
-});
-
-app.MapHealthChecks("/health/live", new()
-{
-    Predicate = _ => false // Liveness: apenas verifica se o app responde
-});
-
-// === Auto-migrate in Development ===
-if (app.Environment.IsDevelopment())
-{
-    using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
-    await dbContext.Database.MigrateAsync();
-}
+app.ConfigurePipeline();
+await app.ApplyMigrationsAsync();
 
 app.Run();
 
@@ -2401,33 +2453,17 @@ public partial class Program;
 
 > 🏛️ **Nota Arquitetural — O Program.cs como mapa da aplicação**
 >
-> O `Program.cs` é lido **de cima para baixo** e conta a história completa do serviço:
-> 1. **Logging** (Serilog) — configurado primeiro para capturar erros de startup
-> 2. **Services** (DI) — registra tudo que a aplicação precisa
-> 3. **Middleware pipeline** — ordem importa! Exception handler antes do Serilog request logging
-> 4. **Endpoints** (MapControllers, MapHealthChecks) — rotas HTTP
-> 5. **Inicialização** (auto-migrate) — configuração de runtime
+> Com extension methods, o `Program.cs` se torna um **índice** de 15 linhas que conta a história completa do serviço:
+> 1. **`AddSerilog()`** — logging configurado primeiro para capturar erros de startup
+> 2. **`AddApiServices()`** — registra tudo que a aplicação precisa (DI container)
+> 3. **`ConfigurePipeline()`** — middleware pipeline + endpoints
+> 4. **`ApplyMigrationsAsync()`** — inicialização de runtime
+>
+> Cada extension method encapsula **uma área de responsabilidade**. Quando o projeto cresce, você pode dividir `AddApiServices()` em `AddSwagger()`, `AddHealthChecks()`, etc. — sem poluir o `Program.cs`.
 >
 > **Decisão — Auto-migrate apenas em Development:** `MigrateAsync()` aplica migrations pendentes automaticamente. Em produção, migrations devem ser aplicadas via CI/CD pipeline ou ferramenta dedicada — nunca na startup, pois pode causar downtime em deploys com múltiplas instâncias (duas instâncias tentando migrar ao mesmo tempo).
 >
 > 🔬 **Nota de Engenharia — Detalhes que importam**
->
-> ```csharp
-> builder.Host.UseSerilog((context, loggerConfig) => { ... });
-> ```
-> **Two-stage initialization** do Serilog — captura logs desde o início do startup, incluindo erros de configuração do EF Core ou DI. Se usasse `Log.Logger = ...` depois do `Build()`, perderia logs do bootstrap.
->
-> ```csharp
-> #pragma warning disable CA1305
-> // ... chamadas Serilog WriteTo ...
-> #pragma warning restore CA1305
-> ```
-> **Pragma para CA1305** — os métodos `WriteTo.Console()` e `WriteTo.Seq()` do Serilog aceitam format strings sem `IFormatProvider`. Com `TreatWarningsAsErrors=true`, o warning CA1305 bloquearia o build. O `#pragma` suprime apenas nesse trecho — o Serilog gerencia formatação internamente.
->
-> ```csharp
-> using Microsoft.EntityFrameworkCore;
-> ```
-> **Using para `MigrateAsync()`** — o método de extensão `MigrateAsync()` está em `Microsoft.EntityFrameworkCore`. Sem este using, o compilador não encontra o método (CS1061).
 >
 > ```csharp
 > builder.Services.AddTransient<GlobalExceptionHandler>();
@@ -2453,7 +2489,7 @@ public partial class Program;
 > ```
 > **`partial class`** permite que `WebApplicationFactory<Program>` nos testes de integração acesse o entry point. Sem isso, a classe `Program` gerada pelo top-level statements seria `internal` e inacessível de outros projetos.
 
-### 4.13 Catalog API — appsettings.json
+### 4.14 Catalog API — appsettings.json
 
 ```json
 {
@@ -2517,15 +2553,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureServices(services =>
         {
-            // Remove all DbContext and options registrations
+            // Remove todos os registros de DbContext e suas opções
             services.RemoveAll<CatalogDbContext>();
             services.RemoveAll<DbContextOptions<CatalogDbContext>>();
 
-            // Remove health checks that depend on SQL Server
+            // Remove health checks que dependem do SQL Server
             services.RemoveAll<Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck>();
 
-            // Register CatalogDbContext with InMemory provider using its own service provider
-            // (avoids conflict with SqlServer provider services in the DI container)
+            // Registra CatalogDbContext com provider InMemory usando seu próprio service provider
+            // (evita conflito com serviços do provider SqlServer no container de DI)
             services.AddScoped(_ =>
             {
                 var options = new DbContextOptionsBuilder<CatalogDbContext>()
@@ -2568,11 +2604,22 @@ public class CategoriesControllerTests(CustomWebApplicationFactory factory)
 {
     private readonly HttpClient _client = factory.CreateClient();
 
+    private async Task<CategoryDto> CreateCategoryAsync(string? name = null, string? description = null)
+    {
+        var request = new CreateCategoryRequest(
+            name ?? $"Categoria {Guid.NewGuid():N}"[..30],
+            description ?? "Descrição de teste");
+        var response = await _client.PostAsJsonAsync("/api/v1/categories", request);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<CategoryDto>())!;
+    }
+
     [Fact]
     public async Task Create_ValidCategory_ReturnsCreated()
     {
         // Arrange
-        var request = new CreateCategoryRequest("Electronics", "Electronic devices and gadgets");
+        var name = $"Eletrônicos {Guid.NewGuid():N}"[..30];
+        var request = new CreateCategoryRequest(name, "Dispositivos eletrônicos");
 
         // Act
         var response = await _client.PostAsJsonAsync("/api/v1/categories", request);
@@ -2582,25 +2629,42 @@ public class CategoriesControllerTests(CustomWebApplicationFactory factory)
 
         var category = await response.Content.ReadFromJsonAsync<CategoryDto>();
         category.Should().NotBeNull();
-        category!.Name.Should().Be("Electronics");
+        category!.Name.Should().Be(name);
         category.Id.Should().NotBeEmpty();
+        category.IsActive.Should().BeTrue();
+        category.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task GetAll_WithActiveCategories_ReturnsOk()
+    {
+        // Arrange
+        await CreateCategoryAsync();
+        await CreateCategoryAsync();
+
+        // Act
+        var response = await _client.GetAsync("/api/v1/categories");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var categories = await response.Content.ReadFromJsonAsync<List<CategoryDto>>();
+        categories.Should().NotBeNull();
+        categories!.Count.Should().BeGreaterThanOrEqualTo(2);
     }
 
     [Fact]
     public async Task GetById_ExistingCategory_ReturnsOk()
     {
         // Arrange
-        var createRequest = new CreateCategoryRequest("Books", "All kinds of books");
-        var createResponse = await _client.PostAsJsonAsync("/api/v1/categories", createRequest);
-        var created = await createResponse.Content.ReadFromJsonAsync<CategoryDto>();
+        var created = await CreateCategoryAsync();
 
         // Act
-        var response = await _client.GetAsync($"/api/v1/categories/{created!.Id}");
+        var response = await _client.GetAsync($"/api/v1/categories/{created.Id}");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var category = await response.Content.ReadFromJsonAsync<CategoryDto>();
-        category!.Name.Should().Be("Books");
+        category!.Name.Should().Be(created.Name);
     }
 
     [Fact]
@@ -2611,6 +2675,55 @@ public class CategoriesControllerTests(CustomWebApplicationFactory factory)
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Update_ExistingCategory_ReturnsOk()
+    {
+        // Arrange
+        var created = await CreateCategoryAsync();
+        var updateRequest = new UpdateCategoryRequest("Nome Atualizado", "Descrição atualizada");
+
+        // Act
+        var response = await _client.PutAsJsonAsync($"/api/v1/categories/{created.Id}", updateRequest);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await response.Content.ReadFromJsonAsync<CategoryDto>();
+        updated!.Name.Should().Be("Nome Atualizado");
+        updated.Description.Should().Be("Descrição atualizada");
+        updated.UpdatedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Delete_ExistingCategory_ReturnsNoContent()
+    {
+        // Arrange
+        var created = await CreateCategoryAsync();
+
+        // Act
+        var response = await _client.DeleteAsync($"/api/v1/categories/{created.Id}");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await _client.GetAsync($"/api/v1/categories/{created.Id}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Create_DuplicateName_ReturnsConflict()
+    {
+        // Arrange
+        var category = await CreateCategoryAsync();
+
+        // Act
+        var response = await _client.PostAsJsonAsync(
+            "/api/v1/categories",
+            new CreateCategoryRequest(category.Name, null));
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]
@@ -2636,10 +2749,12 @@ public class CategoriesControllerTests(CustomWebApplicationFactory factory)
 > ```
 > **`IClassFixture<T>`** — xUnit cria **uma** instância do factory para toda a classe de testes. `factory.CreateClient()` retorna um `HttpClient` que faz requests para a aplicação in-memory. **Primary constructor** injeta o fixture.
 >
+> **Helper method `CreateCategoryAsync()`** — encapsula a criação de categorias com nomes únicos via `Guid.NewGuid()`. A asserção `Should().Be(HttpStatusCode.Created)` no helper garante fail-fast: se o setup falha, o erro é claro e imediato, não uma falha confusa no Assert principal.
+>
 > **Padrão AAA (Arrange-Act-Assert):**
 > ```csharp
 > // Arrange — prepara dados
-> var request = new CreateCategoryRequest("Electronics", "...");
+> var name = $"Eletrônicos {Guid.NewGuid():N}"[..30];
 > // Act — executa a ação
 > var response = await _client.PostAsJsonAsync("/api/v1/categories", request);
 > // Assert — verifica resultado
@@ -2647,9 +2762,13 @@ public class CategoriesControllerTests(CustomWebApplicationFactory factory)
 > ```
 > Cada teste segue essa estrutura. **FluentAssertions** (`Should().Be()`) é mais legível que `Assert.Equal()` — e gera mensagens de erro melhores quando falha.
 >
+> **Cobertura de cenários (8 testes):**
+> - Happy path: Create, GetAll, GetById, Update, Delete
+> - Edge cases: NotFound (ID inexistente), Conflict (nome duplicado), BadRequest (validação)
+>
 > **Naming convention: `Method_State_ExpectedBehavior`**
 > - `Create_ValidCategory_ReturnsCreated` — o que faz, em que condição, o que espera
-> - `GetById_NonExistentCategory_ReturnsNotFound` — cenário de edge case
+> - `Delete_ExistingCategory_ReturnsNoContent` — cenário de soft delete end-to-end
 
 **`tests/OrderFlow.Catalog.Api.Tests/ProductsControllerTests.cs`**
 
@@ -2668,9 +2787,26 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
 
     private async Task<CategoryDto> CreateCategoryAsync()
     {
-        var request = new CreateCategoryRequest($"Test Category {Guid.NewGuid():N}"[..30], "Category for testing");
+        var request = new CreateCategoryRequest(
+            $"Categoria Teste {Guid.NewGuid():N}"[..30],
+            "Categoria para testes");
         var response = await _client.PostAsJsonAsync("/api/v1/categories", request);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<CategoryDto>())!;
+    }
+
+    private async Task<ProductDto> CreateProductAsync(Guid categoryId, string? name = null, string? sku = null)
+    {
+        var request = new CreateProductRequest(
+            name ?? "Produto Teste",
+            "Descrição de teste",
+            sku ?? $"SKU-{Guid.NewGuid():N}"[..20],
+            99.99m,
+            10,
+            categoryId);
+        var response = await _client.PostAsJsonAsync("/api/v1/products", request);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<ProductDto>())!;
     }
 
     [Fact]
@@ -2678,10 +2814,11 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
     {
         // Arrange
         var category = await CreateCategoryAsync();
+        var sku = $"LAPTOP-{Guid.NewGuid():N}"[..20];
         var request = new CreateProductRequest(
             "Laptop Pro",
-            "High-performance laptop",
-            "LAPTOP-001",
+            "Laptop de alta performance",
+            sku,
             2999.99m,
             10,
             category.Id);
@@ -2695,8 +2832,37 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
         var product = await response.Content.ReadFromJsonAsync<ProductDto>();
         product.Should().NotBeNull();
         product!.Name.Should().Be("Laptop Pro");
-        product.Sku.Should().Be("LAPTOP-001");
+        product.Sku.Should().Be(sku.ToUpperInvariant());
         product.Price.Should().Be(2999.99m);
+        product.IsActive.Should().BeTrue();
+        product.CategoryId.Should().Be(category.Id);
+    }
+
+    [Fact]
+    public async Task GetById_ExistingProduct_ReturnsOk()
+    {
+        // Arrange
+        var category = await CreateCategoryAsync();
+        var created = await CreateProductAsync(category.Id);
+
+        // Act
+        var response = await _client.GetAsync($"/api/v1/products/{created.Id}");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var product = await response.Content.ReadFromJsonAsync<ProductDto>();
+        product!.Id.Should().Be(created.Id);
+        product.Name.Should().Be(created.Name);
+    }
+
+    [Fact]
+    public async Task GetById_NonExistentProduct_ReturnsNotFound()
+    {
+        // Act
+        var response = await _client.GetAsync($"/api/v1/products/{Guid.NewGuid()}");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -2704,12 +2870,9 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
     {
         // Arrange
         var category = await CreateCategoryAsync();
-        await _client.PostAsJsonAsync("/api/v1/products", new CreateProductRequest(
-            "Wireless Mouse", null, $"MOUSE-{Guid.NewGuid():N}"[..20], 49.99m, 100, category.Id));
-        await _client.PostAsJsonAsync("/api/v1/products", new CreateProductRequest(
-            "Wireless Keyboard", null, $"KB-{Guid.NewGuid():N}"[..20], 79.99m, 50, category.Id));
-        await _client.PostAsJsonAsync("/api/v1/products", new CreateProductRequest(
-            "Monitor 27\"", null, $"MON-{Guid.NewGuid():N}"[..20], 399.99m, 20, category.Id));
+        await CreateProductAsync(category.Id, "Wireless Mouse", $"MOUSE-{Guid.NewGuid():N}"[..20]);
+        await CreateProductAsync(category.Id, "Wireless Keyboard", $"KB-{Guid.NewGuid():N}"[..20]);
+        await CreateProductAsync(category.Id, "Monitor 27 polegadas", $"MON-{Guid.NewGuid():N}"[..20]);
 
         // Act
         var response = await _client.GetAsync("/api/v1/products?searchTerm=Wireless");
@@ -2724,21 +2887,82 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
     }
 
     [Fact]
+    public async Task Update_ExistingProduct_ReturnsOk()
+    {
+        // Arrange
+        var category = await CreateCategoryAsync();
+        var created = await CreateProductAsync(category.Id);
+        var updateRequest = new UpdateProductRequest(
+            "Nome Atualizado",
+            "Descrição atualizada",
+            199.99m,
+            50);
+
+        // Act
+        var response = await _client.PutAsJsonAsync($"/api/v1/products/{created.Id}", updateRequest);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await response.Content.ReadFromJsonAsync<ProductDto>();
+        updated!.Name.Should().Be("Nome Atualizado");
+        updated.Price.Should().Be(199.99m);
+        updated.StockQuantity.Should().Be(50);
+        updated.UpdatedAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Create_DuplicateSku_ReturnsConflict()
     {
         // Arrange
         var category = await CreateCategoryAsync();
         var sku = $"DUP-{Guid.NewGuid():N}"[..15];
-
-        await _client.PostAsJsonAsync("/api/v1/products", new CreateProductRequest(
-            "Product 1", null, sku, 10m, 1, category.Id));
+        await CreateProductAsync(category.Id, sku: sku);
 
         // Act
         var response = await _client.PostAsJsonAsync("/api/v1/products", new CreateProductRequest(
-            "Product 2", null, sku, 20m, 2, category.Id));
+            "Produto 2", null, sku, 20m, 2, category.Id));
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Create_EmptyName_ReturnsBadRequest()
+    {
+        // Arrange
+        var category = await CreateCategoryAsync();
+        var request = new CreateProductRequest(
+            "",
+            null,
+            $"SKU-{Guid.NewGuid():N}"[..15],
+            10m,
+            1,
+            category.Id);
+
+        // Act
+        var response = await _client.PostAsJsonAsync("/api/v1/products", request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Create_InvalidCategoryId_ReturnsNotFound()
+    {
+        // Arrange
+        var request = new CreateProductRequest(
+            "Produto Teste",
+            null,
+            $"SKU-{Guid.NewGuid():N}"[..15],
+            10m,
+            1,
+            Guid.NewGuid());
+
+        // Act
+        var response = await _client.PostAsJsonAsync("/api/v1/products", request);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -2746,17 +2970,15 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
     {
         // Arrange
         var category = await CreateCategoryAsync();
-        var createResponse = await _client.PostAsJsonAsync("/api/v1/products", new CreateProductRequest(
-            "To Delete", null, $"DEL-{Guid.NewGuid():N}"[..15], 10m, 1, category.Id));
-        var created = await createResponse.Content.ReadFromJsonAsync<ProductDto>();
+        var created = await CreateProductAsync(category.Id);
 
         // Act
-        var response = await _client.DeleteAsync($"/api/v1/products/{created!.Id}");
+        var response = await _client.DeleteAsync($"/api/v1/products/{created.Id}");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        // Verify soft-deleted (filtered by query filter)
+        // Verifica soft-delete (filtrado pelo query filter)
         var getResponse = await _client.GetAsync($"/api/v1/products/{created.Id}");
         getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -2765,28 +2987,29 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
 
 > 🔬 **Nota de Engenharia — Testes que verificam comportamento, não implementação**
 >
+> **Helper methods com asserções** — tanto `CreateCategoryAsync` quanto `CreateProductAsync` incluem `Should().Be(HttpStatusCode.Created)`. Isso implementa o padrão **fail-fast no setup**: se a criação falha, o erro é imediato e claro, sem propagar uma falha confusa no Assert principal do teste.
+>
 > ```csharp
-> var response = await _client.DeleteAsync($"/api/v1/products/{created!.Id}");
+> var response = await _client.DeleteAsync($"/api/v1/products/{created.Id}");
 > response.StatusCode.Should().Be(HttpStatusCode.NoContent);
 > var getResponse = await _client.GetAsync($"/api/v1/products/{created.Id}");
 > getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
 > ```
 > **Teste de soft delete end-to-end** — deleta o produto (soft delete), depois tenta buscar. O Global Query Filter faz o produto "desaparecer" do GET, provando que o fluxo completo funciona: Controller → Service → Entity.Deactivate → SaveChanges → QueryFilter esconde.
 >
-> ```csharp
-> $"MOUSE-{Guid.NewGuid():N}"[..20]
-> ```
-> **SKU único por teste** — `Guid.NewGuid()` gera unicidade, `:N` remove hífens, `[..20]` corta em 20 chars (limite do SKU). Sem isso, testes rodando em paralelo poderiam ter colisão de SKU e falhas intermitentes.
+> **Cobertura de cenários (9 testes):**
+> - Happy path: Create, GetById, Search, Update, Delete
+> - Edge cases: NotFound (ID inexistente), Conflict (SKU duplicado), BadRequest (validação), NotFound (categoria inexistente)
 >
 > ```csharp
-> $"Test Category {Guid.NewGuid():N}"[..30]
+> $"SKU-{Guid.NewGuid():N}"[..20]
 > ```
-> **Categoria única por chamada** — o helper `CreateCategoryAsync` gera nomes únicos para cada invocação. Como `NameExistsAsync` rejeita duplicatas, usar um nome fixo como `"Test Category"` faria testes falharem com `409 Conflict` após a primeira chamada (todos os testes compartilham o mesmo banco InMemory via `WebApplicationFactory`).
+> **Dados únicos por teste** — `Guid.NewGuid()` gera unicidade, `:N` remove hífens, `[..20]` corta no limite do SKU. Sem isso, testes rodando em paralelo poderiam ter colisão de SKU e falhas intermitentes. O mesmo padrão é aplicado a nomes de categorias.
 >
 > ```csharp
-> $"Test Category {Guid.NewGuid():N}"[..30]
+> product.Sku.Should().Be(sku.ToUpperInvariant());
 > ```
-> **Categoria única por chamada** — o helper `CreateCategoryAsync` gera nomes únicos para cada invocação. Como `NameExistsAsync` rejeita duplicatas, usar um nome fixo como `"Test Category"` faria testes falharem com `409 Conflict` após a primeira chamada (todos os testes compartilham o mesmo banco InMemory via `WebApplicationFactory`).
+> **Verifica normalização** — o teste confirma que o SKU é armazenado em maiúsculas independente do input, validando a regra de negócio `Sku = sku.ToUpperInvariant()` na entidade Product.
 
 ---
 
@@ -2879,7 +3102,7 @@ curl http://localhost:5002/api/v1/categories
 | Catalog Domain | `Product.cs`, `Category.cs`, `IProductRepository.cs` |
 | Catalog Application | `ProductService.cs`, `CreateProductRequest.cs`, validators |
 | Catalog Infrastructure | `CatalogDbContext.cs`, `ProductRepository.cs`, migrations |
-| Catalog Api | `ProductsController.cs`, `CategoriesController.cs`, `Program.cs` |
+| Catalog Api | `ProductsController.cs`, `CategoriesController.cs`, `Program.cs`, `Extensions/HostingExtensions.cs` |
 | Docker Compose | `docker/docker-compose.yml` + `.env` |
 | Testes | `OrderFlow.Catalog.Api.Tests/` |
 | Config files | `.editorconfig`, `.gitignore`, `nuget.config` |

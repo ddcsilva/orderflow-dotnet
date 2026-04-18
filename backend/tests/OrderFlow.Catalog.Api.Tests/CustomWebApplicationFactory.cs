@@ -15,15 +15,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureServices(services =>
         {
-            // Remove all DbContext and options registrations
+            // Remove todos os registros do DbContext e opções
             services.RemoveAll<CatalogDbContext>();
             services.RemoveAll<DbContextOptions<CatalogDbContext>>();
 
-            // Remove health checks that depend on SQL Server
+            // Remove health checks que dependem do SQL Server
             services.RemoveAll<Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck>();
 
-            // Register CatalogDbContext with InMemory provider using its own service provider
-            // (avoids conflict with SqlServer provider services in the DI container)
+            // Registra CatalogDbContext com InMemory usando seu próprio service provider
+            // (evita conflito com serviços do provider SqlServer no contêiner DI)
             services.AddScoped(_ =>
             {
                 var options = new DbContextOptionsBuilder<CatalogDbContext>()

@@ -10,7 +10,7 @@ namespace OrderFlow.Catalog.Api.Controllers;
 public sealed class ProductsController(IProductService productService) : ControllerBase
 {
     /// <summary>
-    /// Search products with filtering and pagination.
+    /// Pesquisar produtos com filtragem e paginação.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<ProductDto>), StatusCodes.Status200OK)]
@@ -23,7 +23,7 @@ public sealed class ProductsController(IProductService productService) : Control
     }
 
     /// <summary>
-    /// Get a product by ID.
+    /// Obter um produto por ID.
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
@@ -35,7 +35,7 @@ public sealed class ProductsController(IProductService productService) : Control
     }
 
     /// <summary>
-    /// Get a product by SKU.
+    /// Obter um produto por SKU.
     /// </summary>
     [HttpGet("sku/{sku}")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
@@ -47,37 +47,32 @@ public sealed class ProductsController(IProductService productService) : Control
     }
 
     /// <summary>
-    /// Create a new product.
+    /// Criar um novo produto.
     /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Create(
-        [FromBody] CreateProductRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> Create([FromBody] CreateProductRequest request, CancellationToken ct)
     {
         var product = await productService.CreateAsync(request, ct);
         return CreatedAtAction(nameof(GetById), new { id = product.Id }, product);
     }
 
     /// <summary>
-    /// Update an existing product.
+    /// Atualizar um produto existente.
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Update(
-        Guid id,
-        [FromBody] UpdateProductRequest request,
-        CancellationToken ct)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateProductRequest request, CancellationToken ct)
     {
         var product = await productService.UpdateAsync(id, request, ct);
         return Ok(product);
     }
 
     /// <summary>
-    /// Soft-delete (deactivate) a product.
+    /// Desativar (soft-delete) um produto.
     /// </summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

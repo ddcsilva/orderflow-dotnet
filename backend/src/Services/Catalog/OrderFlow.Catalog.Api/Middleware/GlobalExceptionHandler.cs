@@ -4,8 +4,7 @@ using FluentValidation;
 
 namespace OrderFlow.Catalog.Api.Middleware;
 
-public sealed partial class GlobalExceptionHandler(
-    ILogger<GlobalExceptionHandler> logger) : IMiddleware
+public sealed partial class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IMiddleware
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -68,10 +67,10 @@ public sealed partial class GlobalExceptionHandler(
         await context.Response.WriteAsync(json);
     }
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception: {ExceptionMessage}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Exceção não tratada: {ExceptionMessage}")]
     private static partial void LogUnhandledException(ILogger logger, Exception exception, string exceptionMessage);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Handled exception: {StatusCode} - {ExceptionMessage}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Exceção tratada: {StatusCode} - {ExceptionMessage}")]
     private static partial void LogHandledException(ILogger logger, Exception exception, int statusCode, string exceptionMessage);
 }
 

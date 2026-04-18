@@ -86,12 +86,12 @@ public sealed partial class CategoryService(
         category.CreatedAt,
         category.UpdatedAt);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Category created: {CategoryId} - {CategoryName}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Categoria criada: {CategoryId} - {CategoryName}")]
     private static partial void LogCategoryCreated(ILogger logger, Guid categoryId, string categoryName);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Category updated: {CategoryId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Categoria atualizada: {CategoryId}")]
     private static partial void LogCategoryUpdated(ILogger logger, Guid categoryId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Category deactivated: {CategoryId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Categoria desativada: {CategoryId}")]
     private static partial void LogCategoryDeactivated(ILogger logger, Guid categoryId);
 }
