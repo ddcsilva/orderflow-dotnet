@@ -769,8 +769,10 @@ public sealed class AuthService(
 **`src/Services/Identity/OrderFlow.Identity.Api/Controllers/AuthController.cs`**
 
 ```csharp
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OrderFlow.Identity.Api.DTOs;
 using OrderFlow.Identity.Api.Services;
 using OrderFlow.SharedKernel.Auth;
@@ -782,6 +784,7 @@ namespace OrderFlow.Identity.Api.Controllers;
 public sealed class AuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost("register")]
+    [EnableRateLimiting("auth")] // 10 req/min — protege contra criação em massa de contas
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register(RegisterRequest request)
@@ -792,6 +795,7 @@ public sealed class AuthController(IAuthService authService) : ControllerBase
     }
 
     [HttpPost("login")]
+    [EnableRateLimiting("auth")] // 10 req/min — protege contra brute force
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Login(LoginRequest request)

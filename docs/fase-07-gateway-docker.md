@@ -324,6 +324,14 @@ app.Run();
           "identity-api": {
             "Address": "http://localhost:5001/"
           }
+        },
+        "HealthCheck": {
+          "Active": {
+            "Enabled": true,
+            "Interval": "00:00:30",
+            "Timeout": "00:00:10",
+            "Path": "/health/live"
+          }
         }
       },
       "catalog-cluster": {
