@@ -856,7 +856,7 @@ public class OrdersApiContainerTests : IAsyncLifetime
     private HttpClient _client = null!;
     private WebApplicationFactory<Program> _factory = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await Task.WhenAll(
             _sqlContainer.StartAsync(),
@@ -885,7 +885,7 @@ public class OrdersApiContainerTests : IAsyncLifetime
         await db.Database.EnsureCreatedAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client.Dispose();
         await _factory.DisposeAsync();

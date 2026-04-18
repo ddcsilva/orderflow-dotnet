@@ -199,6 +199,8 @@ dotnet new xunit -n OrderFlow.Catalog.Api.Tests -o tests/OrderFlow.Catalog.Api.T
 dotnet sln add tests/OrderFlow.Catalog.Api.Tests
 ```
 
+> 💡 **Nota sobre o template xunit:** O comando `dotnet new xunit` cria um projeto com dependências padrão (`xunit`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`, `coverlet.collector`). Essas versões padrão podem estar desatualizadas. Como usamos **Central Package Management**, as versões do `Directory.Packages.props` sobrescrevem as do template. Além disso, substituiremos `xunit` (v2, deprecated) por `xunit.v3` (v3) na seção de pacotes.
+
 ### 3.3 Adicionar Referências entre Projetos
 
 ```bash
@@ -232,21 +234,22 @@ Crie `Directory.Packages.props` na raiz:
 
   <ItemGroup>
     <!-- ASP.NET Core -->
-    <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.1.7" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.6" />
 
     <!-- Entity Framework Core -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.6" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.6" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.6" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.6" />
 
     <!-- Validation -->
-    <PackageVersion Include="FluentValidation" Version="11.11.0" />
-    <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
+    <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
 
     <!-- Logging -->
-    <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
-    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.Seq" Version="9.0.0" />
     <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
     <PackageVersion Include="Serilog.Enrichers.Thread" Version="4.0.0" />
@@ -255,16 +258,65 @@ Crie `Directory.Packages.props` na raiz:
     <PackageVersion Include="AspNetCore.HealthChecks.SqlServer" Version="9.0.0" />
 
     <!-- Testing -->
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0" />
-    <PackageVersion Include="FluentAssertions" Version="7.2.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.6" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.6" />
+    <PackageVersion Include="FluentAssertions" Version="8.9.0" />
     <PackageVersion Include="Moq" Version="4.20.72" />
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.2" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.0" />
   </ItemGroup>
 </Project>
 ```
+
+> 🔬 **O que cada pacote faz — Guia de Referência**
+>
+> **ASP.NET Core:**
+> | Pacote | Responsabilidade |
+> |--------|-----------------|
+> | `Swashbuckle.AspNetCore` | Gera documentação **Swagger/OpenAPI** automaticamente a partir dos controllers. Cria a UI interativa em `/swagger` para testar endpoints |
+> | `Microsoft.AspNetCore.OpenApi` | Pacote nativo da Microsoft para anotações OpenAPI. Vem por padrão no template `webapi` e complementa o Swashbuckle com metadata de endpoints |
+>
+> **Entity Framework Core:**
+> | Pacote | Responsabilidade |
+> |--------|-----------------|
+> | `Microsoft.EntityFrameworkCore` | O **ORM principal** — mapeia classes C# para tabelas SQL, gerencia change tracking, traduz LINQ para SQL |
+> | `Microsoft.EntityFrameworkCore.SqlServer` | **Provider** específico para SQL Server — traduz as queries para T-SQL e configura tipos como `decimal(18,2)`, `nvarchar(200)` |
+> | `Microsoft.EntityFrameworkCore.Design` | Ferramentas **design-time** para gerar migrations via CLI (`dotnet ef migrations add`). Só necessário no projeto que roda o `dotnet ef` |
+> | `Microsoft.EntityFrameworkCore.Tools` | Ferramentas para o **Package Manager Console** do Visual Studio (`Add-Migration`, `Update-Database`). Alternativa ao CLI para quem usa VS |
+>
+> **Validação:**
+> | Pacote | Responsabilidade |
+> |--------|-----------------|
+> | `FluentValidation` | Framework de validação **fluente** — define regras como `RuleFor(x => x.Name).NotEmpty().MaximumLength(200)` em vez de Data Annotations |
+> | `FluentValidation.DependencyInjectionExtensions` | Integra FluentValidation com o **DI container** do ASP.NET Core — registra automaticamente todos os validators via `AddValidatorsFromAssembly` |
+>
+> **Logging:**
+> | Pacote | Responsabilidade |
+> |--------|-----------------|
+> | `Serilog.AspNetCore` | Integra Serilog ao pipeline do ASP.NET Core — substitui o logger padrão, adiciona request logging (`UseSerilogRequestLogging`) |
+> | `Serilog.Sinks.Console` | **Sink** que escreve logs no console. Em dev, exibe com cores e formato legível; em containers, usa JSON para coleta automatizada |
+> | `Serilog.Sinks.Seq` | **Sink** que envia logs para o **Seq** — uma UI web para buscar, filtrar e analisar logs estruturados (como um "Google para seus logs") |
+> | `Serilog.Enrichers.Environment` | **Enricher** que adiciona `MachineName` e `EnvironmentName` automaticamente a cada log — útil para distinguir logs de dev/staging/prod |
+> | `Serilog.Enrichers.Thread` | **Enricher** que adiciona `ThreadId` — ajuda a rastrear problemas de concorrência ("qual thread gerou esse erro?") |
+>
+> **Health Checks:**
+> | Pacote | Responsabilidade |
+> |--------|-----------------|
+> | `AspNetCore.HealthChecks.SqlServer` | Verifica conectividade com o SQL Server. Usado no endpoint `/health/ready` para confirmar que o banco está acessível |
+>
+> **Testing:**
+> | Pacote | Responsabilidade |
+> |--------|-----------------|
+> | `Microsoft.AspNetCore.Mvc.Testing` | Fornece `WebApplicationFactory<T>` — sobe a aplicação **inteira em memória** para testes de integração sem precisar de servidor real |
+> | `Microsoft.EntityFrameworkCore.InMemory` | Provider de banco **in-memory** — substitui SQL Server nos testes. Rápido mas não testa SQL real (constraints, migrations) |
+> | `FluentAssertions` | Assertions **legíveis** — `result.Should().Be(200)` em vez de `Assert.Equal(200, result)`. Mensagens de erro muito melhores |
+> | `Moq` | Framework de **mocking** — cria implementações fake de interfaces para unit tests (`Mock<IProductRepository>`) |
+> | `xunit.v3` | Framework de **testes** principal. A v3 é a versão mais recente, substituindo o `xunit` (v2) que está deprecated. Suporta `[Fact]`, `[Theory]`, paralelismo |
+> | `xunit.runner.visualstudio` | **Test runner** que integra xUnit com Visual Studio e `dotnet test` — descobre e executa os testes |
+> | `Microsoft.NET.Test.Sdk` | **SDK de testes** da Microsoft — infraestrutura base que conecta frameworks de teste (xUnit, NUnit) ao `dotnet test` e ao Visual Studio Test Explorer |
+> | `coverlet.collector` | **Code coverage** — mede quais linhas do código são exercitadas pelos testes. Gera relatórios que mostram % de cobertura por classe/método |
 
 ### 3.5 Configurar Directory.Build.props
 
@@ -321,10 +373,92 @@ dotnet_naming_style.camel_case_with_underscore.required_prefix = _
 dotnet_naming_style.camel_case_with_underscore.capitalization = camel_case
 ```
 
+> 🔬 **O que cada configuração do `.editorconfig` significa**
+>
+> O `.editorconfig` é um **contrato de formatação** que IDEs (Visual Studio, VS Code, Rider) leem automaticamente. Sem ele, cada dev formata do seu jeito — tabs vs spaces, CRLF vs LF — e PRs ficam poluídos com mudanças de whitespace.
+>
+> **Configurações globais `[*]` (todos os arquivos):**
+>
+> | Configuração | Valor | O que faz |
+> |---|---|---|
+> | `indent_style = space` | Espaços | Usa **espaços** para indentação (não tabs). Padrão do ecossistema .NET |
+> | `indent_size = 4` | 4 espaços | Cada nível de indentação = 4 espaços. Padrão C# |
+> | `end_of_line = crlf` | `\r\n` | Final de linha Windows. Em projetos cross-platform, use `lf` |
+> | `charset = utf-8` | UTF-8 | Encoding universal — suporta acentos, emojis, caracteres especiais |
+> | `trim_trailing_whitespace = true` | Remove | Apaga espaços em branco **no final das linhas** — evita diffs desnecessários |
+> | `insert_final_newline = true` | Adiciona | Garante **linha em branco no final** de todo arquivo — convenção POSIX que evita warnings em Git |
+>
+> **Configurações C# `[*.cs]`:**
+>
+> | Configuração | Valor | O que faz |
+> |---|---|---|
+> | `dotnet_sort_system_directives_first` | `true` | Coloca `using System.*` antes de outros namespaces nos imports |
+> | `dotnet_separate_import_directive_groups` | `false` | Não adiciona linha em branco entre grupos de `using` |
+> | `csharp_style_namespace_declarations` | `file_scoped` | Prefere `namespace X;` (uma linha) em vez de `namespace X { }` (bloco inteiro) — economiza um nível de indentação |
+> | `csharp_style_var_for_built_in_types` | `false` | Prefere `int x = 5` em vez de `var x = 5` — tipos primitivos ficam mais claros explícitos |
+> | `csharp_style_var_when_type_is_apparent` | `true` | Prefere `var product = new Product()` — quando o tipo já está visível à direita, `var` reduz repetição |
+> | `csharp_style_expression_bodied_methods` | `when_on_single_line` | Métodos de uma linha podem usar `=>`: `public int Sum() => a + b;` |
+> | `csharp_style_expression_bodied_properties` | `true` | Propriedades calculadas usam `=>`: `public string Full => $"{First} {Last}";` |
+>
+> **Naming conventions (a parte mais útil):**
+>
+> ```ini
+> dotnet_naming_rule.private_fields_must_be_camel_case.severity = warning
+> ```
+> Se um campo privado não seguir a convenção, a IDE mostra **warning** (sublinhado amarelo). Isso padroniza o time sem depender de code reviews manuais.
+>
+> ```ini
+> dotnet_naming_style.camel_case_with_underscore.required_prefix = _
+> dotnet_naming_style.camel_case_with_underscore.capitalization = camel_case
+> ```
+> Campos privados devem começar com `_` e usar camelCase: `_productRepository`, `_logger`, `_domainEvents`. Essa é a convenção oficial da Microsoft para .NET.
+
 ### 3.7 Instalar Pacotes NuGet
 
+> ⚠️ **Importante — Central Package Management (CPM):** Como o `Directory.Packages.props` está habilitado, os arquivos `.csproj` **não podem** ter atributo `Version=` nos `PackageReference`. As versões ficam **exclusivamente** no `Directory.Packages.props` (seção 3.4). Além disso, o template `dotnet new xunit` e `dotnet new webapi` criam pacotes com `Version=` inline, que precisam ser corrigidos antes de compilar.
+
+**Passo 1 — Corrigir pacotes do template (Api e Tests)**
+
+O template `webapi` adicionou `Microsoft.AspNetCore.OpenApi` com versão inline, e o template `xunit` adicionou `xunit`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk` e `coverlet.collector` com versões inline. Precisamos remover essas versões e substituir `xunit` (v2, deprecated) por `xunit.v3`.
+
+Edite `src/Services/Catalog/OrderFlow.Catalog.Api/OrderFlow.Catalog.Api.csproj` — remova o `Version="..."` do `Microsoft.AspNetCore.OpenApi`:
+
+```xml
+<!-- ❌ ANTES (gerado pelo template) -->
+<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
+
+<!-- ✅ DEPOIS (compatível com CPM) -->
+<PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+```
+
+Edite `tests/OrderFlow.Catalog.Api.Tests/OrderFlow.Catalog.Api.Tests.csproj` — remova versões inline e substitua `xunit` por `xunit.v3`:
+
+```xml
+<!-- ❌ ANTES (gerado pelo template xunit) -->
+<PackageReference Include="coverlet.collector" Version="6.0.4" />
+<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+<PackageReference Include="xunit" Version="2.9.3" />
+<PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+
+<!-- ✅ DEPOIS (compatível com CPM + xunit.v3) -->
+<PackageReference Include="coverlet.collector">
+  <PrivateAssets>all</PrivateAssets>
+  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+</PackageReference>
+<PackageReference Include="Microsoft.NET.Test.Sdk" />
+<PackageReference Include="xunit.v3" />
+<PackageReference Include="xunit.runner.visualstudio">
+  <PrivateAssets>all</PrivateAssets>
+  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+</PackageReference>
+```
+
+**Passo 2 — Adicionar pacotes de cada camada**
+
+Com o CPM configurado, usamos `dotnet add package` **sem especificar versão** — o SDK busca a versão automaticamente do `Directory.Packages.props`:
+
 ```bash
-# Catalog.Domain (sem dependências externas - apenas SharedKernel)
+# Catalog.Domain (sem dependências externas — apenas SharedKernel)
 
 # Catalog.Application
 dotnet add src/Services/Catalog/OrderFlow.Catalog.Application package FluentValidation
@@ -350,6 +484,18 @@ dotnet add tests/OrderFlow.Catalog.Api.Tests package Microsoft.EntityFrameworkCo
 dotnet add tests/OrderFlow.Catalog.Api.Tests package FluentAssertions
 dotnet add tests/OrderFlow.Catalog.Api.Tests package Moq
 ```
+
+**Passo 3 — Verificar a compilação**
+
+```bash
+dotnet clean
+dotnet restore
+dotnet build
+```
+
+Se aparecer erro **NU1008** ("Projects that use central package management should not define the version on the PackageReference items"), significa que algum `.csproj` ainda tem `Version=` inline. Verifique e remova o atributo `Version` do `PackageReference` que o erro indica.
+
+> 💡 **Por que `xunit.v3` em vez de `xunit`?** O pacote `xunit` (v2) foi descontinuado. O `xunit.v3` traz melhorias significativas: suporte nativo a `IAsyncLifetime`, melhor paralelismo, assertions mais ricas, e compatibilidade com .NET 8+/10+. A API de testes (`[Fact]`, `[Theory]`, `IClassFixture<T>`) permanece a mesma — a migração é apenas trocar o pacote.
 
 ### 3.8 Docker Compose para SQL Server
 
@@ -397,6 +543,59 @@ Crie `docker/.env`:
 ```env
 SA_PASSWORD=OrderFlow@2026!
 ```
+
+> 🔬 **Docker Compose — O que é, para que serve e o que cada configuração significa**
+>
+> **O que é Docker Compose?** É uma ferramenta que define e orquestra **múltiplos containers** com um único arquivo YAML. Em vez de rodar `docker run` com 15 flags para cada serviço, você declara tudo no `docker-compose.yml` e sobe tudo com `docker compose up -d`.
+>
+> **Para que serve no OrderFlow?** Em vez de instalar SQL Server e Seq na sua máquina (o que polui o sistema operacional e cria conflitos de versão), cada serviço roda **isolado** em seu container. Quando não precisar mais, `docker compose down` remove tudo sem deixar rastro.
+>
+> **Explicação linha a linha:**
+>
+> ```yaml
+> services:                          # Declara os containers que serão criados
+> ```
+>
+> **SQL Server:**
+> | Configuração | O que faz |
+> |---|---|
+> | `image: mcr.microsoft.com/mssql/server:2022-latest` | Usa a imagem oficial do SQL Server 2022 da Microsoft. `mcr` = Microsoft Container Registry |
+> | `container_name: orderflow-sqlserver` | Nome fixo do container — facilita referência em logs e comandos (`docker logs orderflow-sqlserver`) |
+> | `ports: "1433:1433"` | Mapeia porta `1433` do host para `1433` do container. Assim, `localhost:1433` no seu código se conecta ao SQL Server dentro do container |
+> | `ACCEPT_EULA: "Y"` | Aceita a licença do SQL Server (obrigatório) |
+> | `MSSQL_SA_PASSWORD: "${SA_PASSWORD:-OrderFlow@2026!}"` | Senha do admin. `${SA_PASSWORD:-...}` lê do arquivo `.env` ou usa o valor padrão após `:-` |
+> | `MSSQL_PID: "Developer"` | Edição do SQL Server — Developer é gratuita e tem todas as features do Enterprise |
+> | `volumes: sqlserver-data:/var/lib/mssql/data` | **Named volume** — dados do banco ficam persistidos mesmo se o container for recriado. Sem isso, `docker compose down` apagaria tudo |
+> | `healthcheck: test: sqlcmd ... "SELECT 1"` | Tenta executar `SELECT 1` a cada 10s. Se falhar 5x, o container é marcado como `unhealthy`. O `start_period: 30s` dá tempo para o SQL Server inicializar |
+> | `restart: unless-stopped` | Reinicia automaticamente o container se ele crashar — exceto se você fez `docker compose stop` manualmente |
+>
+> **Seq (Log Server):**
+> | Configuração | O que faz |
+> |---|---|
+> | `image: datalust/seq:latest` | Imagem oficial do Seq — UI web para visualizar logs estruturados |
+> | `ports: "5341:80"` | A porta 80 interna do Seq é mapeada para `5341` no host. Acesse `http://localhost:5341` para ver a UI |
+> | `ACCEPT_EULA: "Y"` | Aceita a licença (Seq é gratuito para desenvolvimento single-user) |
+> | `volumes: seq-data:/data` | Persiste os logs mesmo se recriar o container |
+>
+> **Volumes:**
+> ```yaml
+> volumes:
+>   sqlserver-data:    # Volume nomeado para dados do SQL Server
+>   seq-data:          # Volume nomeado para dados do Seq
+> ```
+> **Named volumes** são gerenciados pelo Docker e ficam em `\\wsl$\docker-desktop-data\...` (Windows) ou `/var/lib/docker/volumes/` (Linux). São mais seguros que bind mounts porque o Docker controla permissões e lifecycle.
+>
+> **Arquivo `.env`:**
+> O Docker Compose lê automaticamente o `.env` no mesmo diretório. Isso evita hardcoding de senhas no YAML — o `.env` fica no `.gitignore` para não ir para o repositório.
+>
+> **Comandos essenciais:**
+> ```bash
+> docker compose up -d          # Sobe tudo em background (-d = detached)
+> docker compose down            # Para e remove containers (volumes ficam)
+> docker compose down -v         # Para, remove containers E volumes (cuidado!)
+> docker compose logs sqlserver  # Vê logs do SQL Server
+> docker compose ps              # Status dos containers
+> ```
 
 ---
 
@@ -2447,7 +2646,7 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
 
         var result = await response.Content.ReadFromJsonAsync<PagedResult<ProductDto>>();
         result.Should().NotBeNull();
-        result!.Items.Should().HaveCountGreaterOrEqualTo(2);
+        result!.Items.Should().HaveCountGreaterThanOrEqualTo(2);
         result.Items.Should().OnlyContain(p => p.Name.Contains("Wireless"));
     }
 

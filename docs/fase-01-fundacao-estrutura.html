@@ -815,6 +815,10 @@ dotnet sln add src/Services/Catalog/OrderFlow.Catalog.Api
 dotnet new xunit -n OrderFlow.Catalog.Api.Tests -o tests/OrderFlow.Catalog.Api.Tests
 dotnet sln add tests/OrderFlow.Catalog.Api.Tests</code></pre>
 
+<div class="callout callout--tip">
+    <strong>💡 Nota sobre o template xunit:</strong> O comando <code>dotnet new xunit</code> cria um projeto com dependências padrão (<code>xunit</code>, <code>xunit.runner.visualstudio</code>, <code>Microsoft.NET.Test.Sdk</code>, <code>coverlet.collector</code>). Essas versões padrão podem estar desatualizadas. Como usamos <strong>Central Package Management</strong>, as versões do <code>Directory.Packages.props</code> sobrescrevem as do template. Além disso, substituiremos <code>xunit</code> (v2, deprecated) por <code>xunit.v3</code> (v3) na seção de pacotes.
+</div>
+
 <h3>3.3 Adicionar Referências entre Projetos</h3>
 
 <div class="code-filepath">Terminal — referências entre camadas</div>
@@ -845,20 +849,22 @@ dotnet add tests/OrderFlow.Catalog.Api.Tests reference src/Services/Catalog/Orde
 
   <span class="kw">&lt;ItemGroup&gt;</span>
     <span class="cm">&lt;!-- ASP.NET Core --&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Swashbuckle.AspNetCore"</span> <span class="at">Version=</span><span class="str">"7.2.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Swashbuckle.AspNetCore"</span> <span class="at">Version=</span><span class="str">"10.1.7"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.AspNetCore.OpenApi"</span> <span class="at">Version=</span><span class="str">"10.0.6"</span> <span class="kw">/&gt;</span>
 
     <span class="cm">&lt;!-- Entity Framework Core --&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.SqlServer"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.Design"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore"</span> <span class="at">Version=</span><span class="str">"10.0.6"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.SqlServer"</span> <span class="at">Version=</span><span class="str">"10.0.6"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.Design"</span> <span class="at">Version=</span><span class="str">"10.0.6"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.Tools"</span> <span class="at">Version=</span><span class="str">"10.0.6"</span> <span class="kw">/&gt;</span>
 
     <span class="cm">&lt;!-- Validation --&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentValidation"</span> <span class="at">Version=</span><span class="str">"11.11.0"</span> <span class="kw">/&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentValidation.DependencyInjectionExtensions"</span> <span class="at">Version=</span><span class="str">"11.11.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentValidation"</span> <span class="at">Version=</span><span class="str">"12.1.1"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentValidation.DependencyInjectionExtensions"</span> <span class="at">Version=</span><span class="str">"12.1.1"</span> <span class="kw">/&gt;</span>
 
     <span class="cm">&lt;!-- Logging --&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.AspNetCore"</span> <span class="at">Version=</span><span class="str">"9.0.0"</span> <span class="kw">/&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Sinks.Console"</span> <span class="at">Version=</span><span class="str">"6.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.AspNetCore"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Sinks.Console"</span> <span class="at">Version=</span><span class="str">"6.1.1"</span> <span class="kw">/&gt;</span>
     <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Sinks.Seq"</span> <span class="at">Version=</span><span class="str">"9.0.0"</span> <span class="kw">/&gt;</span>
     <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Enrichers.Environment"</span> <span class="at">Version=</span><span class="str">"3.0.1"</span> <span class="kw">/&gt;</span>
     <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Enrichers.Thread"</span> <span class="at">Version=</span><span class="str">"4.0.0"</span> <span class="kw">/&gt;</span>
@@ -867,12 +873,60 @@ dotnet add tests/OrderFlow.Catalog.Api.Tests reference src/Services/Catalog/Orde
     <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"AspNetCore.HealthChecks.SqlServer"</span> <span class="at">Version=</span><span class="str">"9.0.0"</span> <span class="kw">/&gt;</span>
 
     <span class="cm">&lt;!-- Testing --&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.AspNetCore.Mvc.Testing"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.InMemory"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
-    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentAssertions"</span> <span class="at">Version=</span><span class="str">"7.2.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.AspNetCore.Mvc.Testing"</span> <span class="at">Version=</span><span class="str">"10.0.6"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.InMemory"</span> <span class="at">Version=</span><span class="str">"10.0.6"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentAssertions"</span> <span class="at">Version=</span><span class="str">"8.9.0"</span> <span class="kw">/&gt;</span>
     <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Moq"</span> <span class="at">Version=</span><span class="str">"4.20.72"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"xunit.v3"</span> <span class="at">Version=</span><span class="str">"3.2.2"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"xunit.runner.visualstudio"</span> <span class="at">Version=</span><span class="str">"3.1.5"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.NET.Test.Sdk"</span> <span class="at">Version=</span><span class="str">"18.4.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"coverlet.collector"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
   <span class="kw">&lt;/ItemGroup&gt;</span>
 <span class="kw">&lt;/Project&gt;</span></code></pre>
+
+<div class="callout callout--info">
+    <strong>🔬 O que cada pacote faz?</strong>
+    <p><strong>ASP.NET Core &amp; API:</strong></p>
+    <table class="table--small">
+        <tr><td><code>Swashbuckle.AspNetCore</code></td><td>Gera documentação interativa da API (Swagger UI) automaticamente a partir dos endpoints</td></tr>
+        <tr><td><code>Microsoft.AspNetCore.OpenApi</code></td><td>Suporte nativo do ASP.NET Core para geração de documentos OpenAPI (novo no .NET 9+)</td></tr>
+    </table>
+    <p><strong>Entity Framework Core:</strong></p>
+    <table class="table--small">
+        <tr><td><code>Microsoft.EntityFrameworkCore</code></td><td>ORM principal — mapeia classes C# para tabelas do banco de dados</td></tr>
+        <tr><td><code>Microsoft.EntityFrameworkCore.SqlServer</code></td><td>Provider específico para SQL Server (traduz LINQ para T-SQL)</td></tr>
+        <tr><td><code>Microsoft.EntityFrameworkCore.Design</code></td><td>Ferramentas de design-time para geração de migrations via CLI</td></tr>
+        <tr><td><code>Microsoft.EntityFrameworkCore.Tools</code></td><td>Comandos <code>dotnet ef</code> no terminal (migrations, database update, scaffold)</td></tr>
+    </table>
+    <p><strong>Validação:</strong></p>
+    <table class="table--small">
+        <tr><td><code>FluentValidation</code></td><td>Validação de objetos com API fluente — regras legíveis como <code>RuleFor(x =&gt; x.Name).NotEmpty()</code></td></tr>
+        <tr><td><code>FluentValidation.DependencyInjectionExtensions</code></td><td>Registro automático de validators no container de DI do ASP.NET Core</td></tr>
+    </table>
+    <p><strong>Logging:</strong></p>
+    <table class="table--small">
+        <tr><td><code>Serilog.AspNetCore</code></td><td>Integração do Serilog com o pipeline do ASP.NET Core (substitui o logger padrão)</td></tr>
+        <tr><td><code>Serilog.Sinks.Console</code></td><td>Escreve logs no console (terminal) — essencial para desenvolvimento local e containers</td></tr>
+        <tr><td><code>Serilog.Sinks.Seq</code></td><td>Envia logs estruturados para o Seq (UI web para consultar e filtrar logs)</td></tr>
+        <tr><td><code>Serilog.Enrichers.Environment</code></td><td>Adiciona automaticamente <code>MachineName</code> e <code>EnvironmentName</code> a cada log</td></tr>
+        <tr><td><code>Serilog.Enrichers.Thread</code></td><td>Adiciona <code>ThreadId</code> — crítico para diagnosticar problemas de concorrência</td></tr>
+    </table>
+    <p><strong>Health Checks:</strong></p>
+    <table class="table--small">
+        <tr><td><code>AspNetCore.HealthChecks.SqlServer</code></td><td>Verificação de saúde do SQL Server — orquestradores como Kubernetes usam para restart automático</td></tr>
+    </table>
+    <p><strong>Testing:</strong></p>
+    <table class="table--small">
+        <tr><td><code>Microsoft.AspNetCore.Mvc.Testing</code></td><td>Cria um servidor in-memory para testes de integração (sem precisar subir a aplicação real)</td></tr>
+        <tr><td><code>Microsoft.EntityFrameworkCore.InMemory</code></td><td>Provider in-memory para EF Core — permite testar sem banco de dados real</td></tr>
+        <tr><td><code>FluentAssertions</code></td><td>Assertions legíveis: <code>result.Should().BeEquivalentTo(expected)</code></td></tr>
+        <tr><td><code>Moq</code></td><td>Criação de mocks para simular dependências em testes unitários</td></tr>
+        <tr><td><code>xunit.v3</code></td><td>Framework de testes (v3) — substitui o <code>xunit</code> v2 (deprecated). Suporte nativo a async, melhor paralelismo</td></tr>
+        <tr><td><code>xunit.runner.visualstudio</code></td><td>Permite que o Visual Studio e <code>dotnet test</code> descubram e executem testes xUnit</td></tr>
+        <tr><td><code>Microsoft.NET.Test.Sdk</code></td><td>Infraestrutura base para execução de testes no .NET (obrigatório para qualquer framework)</td></tr>
+        <tr><td><code>coverlet.collector</code></td><td>Coleta de cobertura de código durante <code>dotnet test</code> — gera relatórios de quais linhas foram testadas</td></tr>
+    </table>
+</div>
 
 <h3>3.5 Configurar Directory.Build.props</h3>
 
@@ -921,10 +975,76 @@ dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 dotnet_naming_style.camel_case_with_underscore.required_prefix = _
 dotnet_naming_style.camel_case_with_underscore.capitalization = camel_case</code></pre>
 
+<div class="callout callout--info">
+    <strong>🔬 O que cada configuração do .editorconfig significa?</strong>
+    <p><strong>Configurações globais <code>[*]</code> (todos os arquivos):</strong></p>
+    <table class="table--small">
+        <tr><td><code>root = true</code></td><td>Indica que este é o .editorconfig raiz — editores não buscam arquivos .editorconfig em diretórios pai</td></tr>
+        <tr><td><code>indent_style = space</code></td><td>Usa espaços em vez de tabs para indentação</td></tr>
+        <tr><td><code>indent_size = 4</code></td><td>4 espaços por nível de indentação (padrão C#)</td></tr>
+        <tr><td><code>end_of_line = crlf</code></td><td>Usa <code>\r\n</code> (Windows). Em projetos cross-platform, considere <code>lf</code></td></tr>
+        <tr><td><code>charset = utf-8-bom</code></td><td>UTF-8 com BOM — padrão do Visual Studio para arquivos C#</td></tr>
+        <tr><td><code>trim_trailing_whitespace = true</code></td><td>Remove espaços no final das linhas automaticamente ao salvar</td></tr>
+        <tr><td><code>insert_final_newline = true</code></td><td>Garante uma linha vazia no final do arquivo (boa prática para diffs no Git)</td></tr>
+    </table>
+    <p><strong>Configurações C# <code>[*.cs]</code>:</strong></p>
+    <table class="table--small">
+        <tr><td><code>csharp_style_namespace_declarations = file_scoped:suggestion</code></td><td>Prefere <code>namespace X;</code> em vez de <code>namespace X { }</code> — economiza um nível de indentação</td></tr>
+        <tr><td><code>csharp_style_var_for_built_in_types = false:suggestion</code></td><td>Prefere tipo explícito para tipos primitivos: <code>int x = 5</code> em vez de <code>var x = 5</code></td></tr>
+        <tr><td><code>csharp_style_var_when_type_is_apparent = true:suggestion</code></td><td>Permite <code>var</code> quando o tipo é óbvio: <code>var list = new List&lt;string&gt;()</code></td></tr>
+    </table>
+    <p><strong>Naming conventions (convenções de nomenclatura):</strong></p>
+    <p>As regras <code>dotnet_naming_*</code> forçam que campos privados usem o prefixo <code>_</code> com camelCase: <code>private readonly ILogger _logger;</code>. Isso é o padrão do .NET e ajuda a distinguir campos de variáveis locais e parâmetros sem usar <code>this.</code></p>
+</div>
+
 <h3>3.7 Instalar Pacotes NuGet</h3>
 
+<div class="callout callout--warning">
+    <strong>⚠️ Importante — Central Package Management (CPM):</strong> Como o <code>Directory.Packages.props</code> está habilitado, os arquivos <code>.csproj</code> <strong>não podem</strong> ter atributo <code>Version=</code> nos <code>PackageReference</code>. As versões ficam <strong>exclusivamente</strong> no <code>Directory.Packages.props</code> (seção 3.4). Além disso, os templates <code>dotnet new xunit</code> e <code>dotnet new webapi</code> criam pacotes com <code>Version=</code> inline, que precisam ser corrigidos antes de compilar.
+</div>
+
+<h4>Passo 1 — Corrigir pacotes do template (Api e Tests)</h4>
+
+<p>O template <code>webapi</code> adicionou <code>Microsoft.AspNetCore.OpenApi</code> com versão inline, e o template <code>xunit</code> adicionou <code>xunit</code>, <code>xunit.runner.visualstudio</code>, <code>Microsoft.NET.Test.Sdk</code> e <code>coverlet.collector</code> com versões inline. Precisamos remover essas versões e substituir <code>xunit</code> (v2, deprecated) por <code>xunit.v3</code>.</p>
+
+<p>Edite <code>src/Services/Catalog/OrderFlow.Catalog.Api/OrderFlow.Catalog.Api.csproj</code> — remova o <code>Version="..."</code> do <code>Microsoft.AspNetCore.OpenApi</code>:</p>
+
+<div class="code-filepath">OrderFlow.Catalog.Api.csproj — correção do template</div>
+<pre><code><span class="cm">&lt;!-- ❌ ANTES (gerado pelo template) --&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"Microsoft.AspNetCore.OpenApi"</span> <span class="at">Version=</span><span class="str">"10.0.5"</span> <span class="kw">/&gt;</span>
+
+<span class="cm">&lt;!-- ✅ DEPOIS (compatível com CPM) --&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"Microsoft.AspNetCore.OpenApi"</span> <span class="kw">/&gt;</span></code></pre>
+
+<p>Edite <code>tests/OrderFlow.Catalog.Api.Tests/OrderFlow.Catalog.Api.Tests.csproj</code> — remova versões inline e substitua <code>xunit</code> por <code>xunit.v3</code>:</p>
+
+<div class="code-filepath">OrderFlow.Catalog.Api.Tests.csproj — correção do template</div>
+<pre><code><span class="cm">&lt;!-- ❌ ANTES (gerado pelo template xunit) --&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"coverlet.collector"</span> <span class="at">Version=</span><span class="str">"6.0.4"</span> <span class="kw">/&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"Microsoft.NET.Test.Sdk"</span> <span class="at">Version=</span><span class="str">"17.14.1"</span> <span class="kw">/&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"xunit"</span> <span class="at">Version=</span><span class="str">"2.9.3"</span> <span class="kw">/&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"xunit.runner.visualstudio"</span> <span class="at">Version=</span><span class="str">"3.1.4"</span> <span class="kw">/&gt;</span>
+
+<span class="cm">&lt;!-- ✅ DEPOIS (compatível com CPM + xunit.v3) --&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"coverlet.collector"</span><span class="kw">&gt;</span>
+  <span class="kw">&lt;PrivateAssets&gt;</span>all<span class="kw">&lt;/PrivateAssets&gt;</span>
+  <span class="kw">&lt;IncludeAssets&gt;</span>runtime; build; native; contentfiles; analyzers; buildtransitive<span class="kw">&lt;/IncludeAssets&gt;</span>
+<span class="kw">&lt;/PackageReference&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"Microsoft.NET.Test.Sdk"</span> <span class="kw">/&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"xunit.v3"</span> <span class="kw">/&gt;</span>
+<span class="kw">&lt;PackageReference</span> <span class="at">Include=</span><span class="str">"xunit.runner.visualstudio"</span><span class="kw">&gt;</span>
+  <span class="kw">&lt;PrivateAssets&gt;</span>all<span class="kw">&lt;/PrivateAssets&gt;</span>
+  <span class="kw">&lt;IncludeAssets&gt;</span>runtime; build; native; contentfiles; analyzers; buildtransitive<span class="kw">&lt;/IncludeAssets&gt;</span>
+<span class="kw">&lt;/PackageReference&gt;</span></code></pre>
+
+<h4>Passo 2 — Adicionar pacotes de cada camada</h4>
+
+<p>Com o CPM configurado, usamos <code>dotnet add package</code> <strong>sem especificar versão</strong> — o SDK busca a versão automaticamente do <code>Directory.Packages.props</code>:</p>
+
 <div class="code-filepath">Terminal — instalação de dependências</div>
-<pre><code><span class="cm"># Catalog.Application</span>
+<pre><code><span class="cm"># Catalog.Domain (sem dependências externas — apenas SharedKernel)</span>
+
+<span class="cm"># Catalog.Application</span>
 dotnet add src/Services/Catalog/OrderFlow.Catalog.Application package FluentValidation
 dotnet add src/Services/Catalog/OrderFlow.Catalog.Application package FluentValidation.DependencyInjectionExtensions
 
@@ -947,6 +1067,19 @@ dotnet add tests/OrderFlow.Catalog.Api.Tests package Microsoft.AspNetCore.Mvc.Te
 dotnet add tests/OrderFlow.Catalog.Api.Tests package Microsoft.EntityFrameworkCore.InMemory
 dotnet add tests/OrderFlow.Catalog.Api.Tests package FluentAssertions
 dotnet add tests/OrderFlow.Catalog.Api.Tests package Moq</code></pre>
+
+<h4>Passo 3 — Verificar a compilação</h4>
+
+<div class="code-filepath">Terminal — verificação</div>
+<pre><code>dotnet clean
+dotnet restore
+dotnet build</code></pre>
+
+<p>Se aparecer erro <strong>NU1008</strong> (<em>"Projects that use central package management should not define the version on the PackageReference items"</em>), significa que algum <code>.csproj</code> ainda tem <code>Version=</code> inline. Verifique e remova o atributo <code>Version</code> do <code>PackageReference</code> que o erro indica.</p>
+
+<div class="callout callout--tip">
+    <strong>💡 Por que <code>xunit.v3</code> em vez de <code>xunit</code>?</strong> O pacote <code>xunit</code> (v2) foi descontinuado. O <code>xunit.v3</code> traz melhorias significativas: suporte nativo a <code>IAsyncLifetime</code>, melhor paralelismo, assertions mais ricas, e compatibilidade com .NET 8+/10+. A API de testes (<code>[Fact]</code>, <code>[Theory]</code>, <code>IClassFixture&lt;T&gt;</code>) permanece a mesma — a migração é apenas trocar o pacote.
+</div>
 
 <h3>3.8 Docker Compose para SQL Server e Seq</h3>
 
@@ -988,6 +1121,39 @@ dotnet add tests/OrderFlow.Catalog.Api.Tests package Moq</code></pre>
 
 <div class="code-filepath">docker/.env</div>
 <pre><code>SA_PASSWORD=OrderFlow@2026!</code></pre>
+
+<div class="callout callout--info">
+    <strong>🔬 Docker Compose — O que é, para que serve e o que cada configuração significa</strong>
+    <p><strong>O que é Docker Compose?</strong> É uma ferramenta que define e orquestra <strong>múltiplos containers</strong> com um único arquivo YAML. Em vez de rodar <code>docker run</code> com 15 flags para cada serviço, você declara tudo no <code>docker-compose.yml</code> e sobe tudo com <code>docker compose up -d</code>.</p>
+    <p><strong>Para que serve no OrderFlow?</strong> Em vez de instalar SQL Server e Seq na sua máquina (o que polui o sistema operacional e cria conflitos de versão), cada serviço roda <strong>isolado</strong> em seu container. Quando não precisar mais, <code>docker compose down</code> remove tudo sem deixar rastro.</p>
+    <p><strong>SQL Server:</strong></p>
+    <table class="table--small">
+        <tr><td><code>image: mcr.microsoft.com/mssql/server:2022-latest</code></td><td>Imagem oficial do SQL Server 2022 da Microsoft. <code>mcr</code> = Microsoft Container Registry</td></tr>
+        <tr><td><code>container_name: orderflow-sqlserver</code></td><td>Nome fixo do container — facilita referência em logs e comandos</td></tr>
+        <tr><td><code>ports: "1433:1433"</code></td><td>Mapeia porta 1433 do host para 1433 do container. <code>localhost:1433</code> no seu código se conecta ao SQL Server dentro do container</td></tr>
+        <tr><td><code>ACCEPT_EULA: "Y"</code></td><td>Aceita a licença do SQL Server (obrigatório)</td></tr>
+        <tr><td><code>MSSQL_SA_PASSWORD: "${SA_PASSWORD:-...}"</code></td><td>Senha do admin. Lê do arquivo <code>.env</code> ou usa o valor padrão após <code>:-</code></td></tr>
+        <tr><td><code>MSSQL_PID: "Developer"</code></td><td>Edição Developer — gratuita com todas as features do Enterprise</td></tr>
+        <tr><td><code>volumes: sqlserver-data:/var/lib/mssql/data</code></td><td><strong>Named volume</strong> — dados persistem mesmo se o container for recriado</td></tr>
+        <tr><td><code>healthcheck: test: sqlcmd ... "SELECT 1"</code></td><td>Tenta executar <code>SELECT 1</code> a cada 10s. Se falhar 5x, container é <code>unhealthy</code>. <code>start_period: 30s</code> dá tempo para inicializar</td></tr>
+        <tr><td><code>restart: unless-stopped</code></td><td>Reinicia automaticamente se crashar — exceto se você fez <code>docker compose stop</code></td></tr>
+    </table>
+    <p><strong>Seq (Log Server):</strong></p>
+    <table class="table--small">
+        <tr><td><code>image: datalust/seq:latest</code></td><td>Imagem oficial do Seq — UI web para visualizar logs estruturados</td></tr>
+        <tr><td><code>ports: "5341:80"</code></td><td>Porta 80 interna mapeada para 5341. Acesse <code>http://localhost:5341</code></td></tr>
+        <tr><td><code>ACCEPT_EULA: "Y"</code></td><td>Aceita a licença (Seq é gratuito para desenvolvimento single-user)</td></tr>
+        <tr><td><code>volumes: seq-data:/data</code></td><td>Persiste os logs mesmo se recriar o container</td></tr>
+    </table>
+    <p><strong>Named Volumes</strong> são gerenciados pelo Docker e ficam em <code>\\wsl$\docker-desktop-data\...</code> (Windows). São mais seguros que bind mounts porque o Docker controla permissões e lifecycle.</p>
+    <p><strong>Arquivo <code>.env</code>:</strong> O Docker Compose lê automaticamente o <code>.env</code> no mesmo diretório. Isso evita hardcoding de senhas no YAML — o <code>.env</code> fica no <code>.gitignore</code>.</p>
+    <p><strong>Comandos essenciais:</strong></p>
+    <pre><code>docker compose up -d          # Sobe tudo em background (-d = detached)
+docker compose down            # Para e remove containers (volumes ficam)
+docker compose down -v         # Para, remove containers E volumes (cuidado!)
+docker compose logs sqlserver  # Vê logs do SQL Server
+docker compose ps              # Status dos containers</code></pre>
+</div>
 
 <div class="divider"></div>
 
