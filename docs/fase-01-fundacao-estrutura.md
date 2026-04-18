@@ -648,6 +648,10 @@ SA_PASSWORD=OrderFlow@2026!
 
 > ⚠️ **Armadilha Comum:** Cuidado para não transformar o SharedKernel em um "lixão compartilhado". Ele deve conter **apenas** conceitos que realmente são universais (Entity, ValueObject, interfaces de infraestrutura). Se algo é específico de Orders, pertence ao Orders.Domain. A regra de ouro: *"Se eu remover um serviço inteiro, o SharedKernel continua fazendo sentido?"*
 
+> 📂 **Por que os arquivos estão todos na raiz, sem subpastas?**
+>
+> O SharedKernel tem apenas 5 arquivos (`Entity.cs`, `AuditableEntity.cs`, `IDomainEvent.cs`, `IRepository.cs`, `IUnitOfWork.cs`), todos no mesmo namespace `OrderFlow.SharedKernel`. Criar pastas como `Entities/`, `Interfaces/`, `Events/` para 1-2 arquivos cada seria over-engineering — adiciona navegação desnecessária sem benefício real. A regra prática: **crie pastas quando tiver 5+ arquivos do mesmo tipo**. Quando o SharedKernel crescer (ValueObject base, Result pattern, novos eventos), reorganize. Até lá, a raiz plana é a solução mais simples que funciona (KISS).
+
 **`src/BuildingBlocks/OrderFlow.SharedKernel/Entity.cs`**
 
 ```csharp
@@ -745,6 +749,10 @@ public interface IDomainEvent
 > Esta interface tem **uma única propriedade**. Isso é intencional — é o **Interface Segregation Principle (ISP)** do SOLID na prática. A interface define *o contrato mínimo* que todo evento de domínio deve cumprir: "quando aconteceu?". Metadata adicional (quem causou, correlation id) será adicionada por enrichers, não pela interface. Se amanhã precisar de `EventId` ou `CausedBy`, é melhor criar `IDomainEventEnvelope` do que poluir a interface base — isso evita recompilação de todos os eventos existentes.
 >
 > **Por que `DateTime` e não `DateTimeOffset`?** Em sistemas distribuídos, `DateTimeOffset` preserva timezone. Para o OrderFlow (que usa `DateTime.UtcNow` consistentemente), `DateTime` em UTC é suficiente e mais leve. Se o sistema tivesse múltiplos fusos horários como input, `DateTimeOffset` seria a escolha correta.
+
+> 💡 **Princípio YAGNI — "You Aren't Gonna Need It"**
+>
+> YAGNI é um princípio de engenharia de software que diz: **não implemente algo até que você realmente precise**. O nome vem do inglês *"You Aren't Gonna Need It"* (Você Não Vai Precisar Disso). A ideia é simples: é tentador antecipar funcionalidades futuras ("e se um dia precisarmos de X?"), mas isso gera código que ninguém usa, aumenta a complexidade, e dificulta mudanças — porque agora você mantém código *real* para um cenário *imaginário*. O custo de manter código desnecessário é sempre maior que o custo de adicioná-lo quando realmente for preciso. Na prática: resolva o problema de **hoje** com a solução mais simples possível. Quando o problema de **amanhã** chegar, você terá mais contexto para resolvê-lo da forma certa.
 
 > **Por que não herdar de `MediatR.INotification` agora?**
 >
@@ -1235,6 +1243,23 @@ public sealed record PagedResult<T>(
 >
 > **Por que `IReadOnlyList<T>` e não `IEnumerable<T>`?** `IReadOnlyList` garante acesso por índice (`Items[0]`) e `Count` sem materializar. `IEnumerable` permitiria lazy evaluation — perigoso em DTOs serializados para JSON, pois a query ao banco poderia já ter sido fechada (connection disposed).
 
+> 💡 **Em palavras simples — O que o PagedResult faz e para que serve?**
+>
+> Imagine que sua loja tem 10.000 produtos. Quando o usuário abre a página de produtos, você **não quer** devolver todos de uma vez — seria lento, gastaria memória e a tela ficaria impossível de navegar. A solução é **paginação**: devolver os produtos em "páginas", tipo 20 por vez.
+>
+> O `PagedResult<T>` é justamente o "envelope" que carrega uma página de resultados. Ele guarda:
+> - **`Items`** — a lista de itens daquela página (ex: os 20 produtos da página 3)
+> - **`TotalCount`** — o total de itens que existem no banco (ex: 10.000)
+> - **`Page`** — em qual página você está (ex: 3)
+> - **`PageSize`** — quantos itens cabem por página (ex: 20)
+>
+> E calcula automaticamente:
+> - **`TotalPages`** — quantas páginas existem no total (10.000 ÷ 20 = 500 páginas)
+> - **`HasPreviousPage`** — se existe página anterior (página 3 → sim)
+> - **`HasNextPage`** — se existe próxima página (página 3 de 500 → sim)
+>
+> O `<T>` (genérico) significa que funciona com **qualquer tipo**: `PagedResult<ProductDto>` para produtos, `PagedResult<CategoryDto>` para categorias — o mesmo código serve para todos. É como um envelope padrão dos Correios: funciona para qualquer carta, não precisa de um envelope diferente para cada destinatário.
+
 ### 4.5 Catalog Application — Validators
 
 **`src/Services/Catalog/OrderFlow.Catalog.Application/Validators/CreateProductValidator.cs`**
@@ -1250,22 +1275,22 @@ public sealed class CreateProductValidator : AbstractValidator<CreateProductRequ
     public CreateProductValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Product name is required.")
-            .MaximumLength(200).WithMessage("Product name must not exceed 200 characters.");
+            .NotEmpty().WithMessage("O nome do produto é obrigatório.")
+            .MaximumLength(200).WithMessage("O nome do produto não pode exceder 200 caracteres.");
 
         RuleFor(x => x.Sku)
-            .NotEmpty().WithMessage("SKU is required.")
-            .MaximumLength(50).WithMessage("SKU must not exceed 50 characters.")
-            .Matches(@"^[A-Za-z0-9\-]+$").WithMessage("SKU must contain only letters, numbers and hyphens.");
+            .NotEmpty().WithMessage("O SKU é obrigatório.")
+            .MaximumLength(50).WithMessage("O SKU não pode exceder 50 caracteres.")
+            .Matches(@"^[A-Za-z0-9\-]+$").WithMessage("O SKU deve conter apenas letras, números e hífens.");
 
         RuleFor(x => x.Price)
-            .GreaterThanOrEqualTo(0).WithMessage("Price must be zero or positive.");
+            .GreaterThanOrEqualTo(0).WithMessage("O preço deve ser zero ou positivo.");
 
         RuleFor(x => x.StockQuantity)
-            .GreaterThanOrEqualTo(0).WithMessage("Stock quantity must be zero or positive.");
+            .GreaterThanOrEqualTo(0).WithMessage("A quantidade em estoque deve ser zero ou positiva.");
 
         RuleFor(x => x.CategoryId)
-            .NotEmpty().WithMessage("Category is required.");
+            .NotEmpty().WithMessage("A categoria é obrigatória.");
     }
 }
 ```
@@ -1289,6 +1314,8 @@ public sealed class CreateProductValidator : AbstractValidator<CreateProductRequ
 > ```
 > **Encadeamento fluente (builder pattern)** — cada método retorna o builder, permitindo chamadas em cadeia. A **regex** `^[A-Za-z0-9\-]+$` valida: `^` início, `[A-Za-z0-9\-]+` um ou mais caracteres alfanuméricos ou hífen, `$` fim. Isso impede caracteres especiais que quebrariam URLs (`/api/products/sku/ABC-001`).
 
+**src/Services/Catalog/OrderFlow.Catalog.Application/Validators/CreateCategoryValidator.cs**
+
 ```csharp
 using FluentValidation;
 using OrderFlow.Catalog.Application.DTOs;
@@ -1300,11 +1327,11 @@ public sealed class CreateCategoryValidator : AbstractValidator<CreateCategoryRe
     public CreateCategoryValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Category name is required.")
-            .MaximumLength(100).WithMessage("Category name must not exceed 100 characters.");
+            .NotEmpty().WithMessage("O nome da categoria é obrigatório.")
+            .MaximumLength(100).WithMessage("O nome da categoria não pode exceder 100 caracteres.");
 
         RuleFor(x => x.Description)
-            .MaximumLength(500).WithMessage("Description must not exceed 500 characters.")
+            .MaximumLength(500).WithMessage("A descrição não pode exceder 500 caracteres.")
             .When(x => x.Description is not null);
     }
 }

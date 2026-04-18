@@ -1234,6 +1234,11 @@ docker compose ps              # Status dos containers</code></pre>
     <p>Cuidado para não transformar o SharedKernel em um "lixão compartilhado". Ele deve conter <strong>apenas</strong> conceitos universais. A regra de ouro: <em>"Se eu remover um serviço inteiro, o SharedKernel continua fazendo sentido?"</em></p>
 </div>
 
+<div class="callout callout--tip">
+    <div class="callout-title">📂 Por que os arquivos estão todos na raiz, sem subpastas?</div>
+    <p>O SharedKernel tem apenas 5 arquivos (<code>Entity.cs</code>, <code>AuditableEntity.cs</code>, <code>IDomainEvent.cs</code>, <code>IRepository.cs</code>, <code>IUnitOfWork.cs</code>), todos no mesmo namespace <code>OrderFlow.SharedKernel</code>. Criar pastas como <code>Entities/</code>, <code>Interfaces/</code>, <code>Events/</code> para 1-2 arquivos cada seria over-engineering — adiciona navegação desnecessária sem benefício real. A regra prática: <strong>crie pastas quando tiver 5+ arquivos do mesmo tipo</strong>. Quando o SharedKernel crescer (ValueObject base, Result pattern, novos eventos), reorganize. Até lá, a raiz plana é a solução mais simples que funciona (KISS).</p>
+</div>
+
 <h4>Entity.cs</h4>
 
 <div class="code-filepath">src/BuildingBlocks/OrderFlow.SharedKernel/Entity.cs</div>
@@ -1292,7 +1297,8 @@ docker compose ps              # Status dos containers</code></pre>
 <div class="callout callout--eng">
     <div class="callout-title">🔬 Interface Segregation Principle (ISP)</div>
     <p>Uma única propriedade intencional — o contrato mínimo que todo evento de domínio deve cumprir: <em>"quando aconteceu?"</em>. Metadata adicional será adicionada por enrichers, não pela interface.</p>
-    <p><strong>Por que não herdar de <code>MediatR.INotification</code> agora?</strong> O SharedKernel é base de <strong>todos</strong> os serviços. Na <strong>Fase 3</strong> (CQRS), quando o Orders precisar, atualizaremos a interface. Princípio <strong>YAGNI</strong>.</p>
+    <p><strong>Princípio YAGNI — "You Aren't Gonna Need It":</strong> YAGNI diz: <strong>não implemente algo até que você realmente precise</strong>. É tentador antecipar funcionalidades futuras ("e se um dia precisarmos de X?"), mas isso gera código que ninguém usa e aumenta a complexidade. O custo de manter código desnecessário é sempre maior que o custo de adicioná-lo quando for preciso. Resolva o problema de <strong>hoje</strong> com a solução mais simples possível.</p>
+    <p><strong>Por que não herdar de <code>MediatR.INotification</code> agora?</strong> O SharedKernel é base de <strong>todos</strong> os serviços. Se adicionarmos MediatR aqui, forçamos uma dependência transitiva em projetos que não precisam dele (ex: Catalog). Na <strong>Fase 3</strong> (CQRS), quando o Orders precisar, atualizaremos a interface. Isso segue o princípio YAGNI e mantém o SharedKernel leve.</p>
 </div>
 
 <h4>AuditableEntity.cs</h4>
@@ -1528,6 +1534,25 @@ docker compose ps              # Status dos containers</code></pre>
     <p><strong>Separação de concerns:</strong> <code>ProductDto</code> = output (com <code>Id</code>, <code>CategoryName</code> computado). <code>CreateProductRequest</code> = input (sem <code>Id</code> — servidor gera). <code>UpdateProductRequest</code> = input parcial (sem <code>Sku</code> — imutável após criação). <code>PagedResult&lt;T&gt;</code> = record genérico com computed properties.</p>
 </div>
 
+<div class="callout callout--tip">
+    <div class="callout-title">💡 Em palavras simples — O que o PagedResult faz e para que serve?</div>
+    <p>Imagine que sua loja tem 10.000 produtos. Quando o usuário abre a página de produtos, você <strong>não quer</strong> devolver todos de uma vez — seria lento, gastaria memória e a tela ficaria impossível de navegar. A solução é <strong>paginação</strong>: devolver os produtos em "páginas", tipo 20 por vez.</p>
+    <p>O <code>PagedResult&lt;T&gt;</code> é justamente o "envelope" que carrega uma página de resultados. Ele guarda:</p>
+    <ul>
+        <li><strong><code>Items</code></strong> — a lista de itens daquela página (ex: os 20 produtos da página 3)</li>
+        <li><strong><code>TotalCount</code></strong> — o total de itens que existem no banco (ex: 10.000)</li>
+        <li><strong><code>Page</code></strong> — em qual página você está (ex: 3)</li>
+        <li><strong><code>PageSize</code></strong> — quantos itens cabem por página (ex: 20)</li>
+    </ul>
+    <p>E calcula automaticamente:</p>
+    <ul>
+        <li><strong><code>TotalPages</code></strong> — quantas páginas existem no total (10.000 ÷ 20 = 500 páginas)</li>
+        <li><strong><code>HasPreviousPage</code></strong> — se existe página anterior (página 3 → sim)</li>
+        <li><strong><code>HasNextPage</code></strong> — se existe próxima página (página 3 de 500 → sim)</li>
+    </ul>
+    <p>O <code>&lt;T&gt;</code> (genérico) significa que funciona com <strong>qualquer tipo</strong>: <code>PagedResult&lt;ProductDto&gt;</code> para produtos, <code>PagedResult&lt;CategoryDto&gt;</code> para categorias — o mesmo código serve para todos. É como um envelope padrão dos Correios: funciona para qualquer carta, não precisa de um envelope diferente para cada destinatário.</p>
+</div>
+
 <!-- ====== 4.5 Validators ====== -->
 <h3>4.5 Catalog Application — Validators</h3>
 
@@ -1537,22 +1562,22 @@ docker compose ps              # Status dos containers</code></pre>
     <span class="kw">public</span> <span class="fn">CreateProductValidator</span>()
     {
         <span class="fn">RuleFor</span>(x =&gt; x.Name)
-            .<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"Product name is required."</span>)
-            .<span class="fn">MaximumLength</span>(<span class="num">200</span>).<span class="fn">WithMessage</span>(<span class="str">"Name must not exceed 200 characters."</span>);
+            .<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"O nome do produto é obrigatório."</span>)
+            .<span class="fn">MaximumLength</span>(<span class="num">200</span>).<span class="fn">WithMessage</span>(<span class="str">"O nome do produto não pode exceder 200 caracteres."</span>);
 
         <span class="fn">RuleFor</span>(x =&gt; x.Sku)
-            .<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"SKU is required."</span>)
-            .<span class="fn">MaximumLength</span>(<span class="num">50</span>)
+            .<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"O SKU é obrigatório."</span>)
+            .<span class="fn">MaximumLength</span>(<span class="num">50</span>).<span class="fn">WithMessage</span>(<span class="str">"O SKU não pode exceder 50 caracteres."</span>)
             .<span class="fn">Matches</span>(<span class="str">@"^[A-Za-z0-9\-]+$"</span>)
-            .<span class="fn">WithMessage</span>(<span class="str">"SKU: only letters, numbers and hyphens."</span>);
+            .<span class="fn">WithMessage</span>(<span class="str">"O SKU deve conter apenas letras, números e hífens."</span>);
 
         <span class="fn">RuleFor</span>(x =&gt; x.Price)
-            .<span class="fn">GreaterThanOrEqualTo</span>(<span class="num">0</span>).<span class="fn">WithMessage</span>(<span class="str">"Price must be zero or positive."</span>);
+            .<span class="fn">GreaterThanOrEqualTo</span>(<span class="num">0</span>).<span class="fn">WithMessage</span>(<span class="str">"O preço deve ser zero ou positivo."</span>);
 
         <span class="fn">RuleFor</span>(x =&gt; x.StockQuantity)
-            .<span class="fn">GreaterThanOrEqualTo</span>(<span class="num">0</span>);
+            .<span class="fn">GreaterThanOrEqualTo</span>(<span class="num">0</span>).<span class="fn">WithMessage</span>(<span class="str">"A quantidade em estoque deve ser zero ou positiva."</span>);
 
-        <span class="fn">RuleFor</span>(x =&gt; x.CategoryId).<span class="fn">NotEmpty</span>();
+        <span class="fn">RuleFor</span>(x =&gt; x.CategoryId).<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"A categoria é obrigatória."</span>);
     }
 }</code></pre>
 
