@@ -1,0 +1,2149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fase 1 — Fundação e Estrutura | OrderFlow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #38bdf8;
+            --accent: #a78bfa;
+            --secondary: #34d399;
+            --text: #e2e8f0;
+            --background: #0a0e17;
+            --surface: #151b28;
+            --glow-primary: 0 0 20px rgba(56, 189, 248, 0.3);
+            --glow-accent: 0 0 20px rgba(167, 139, 250, 0.3);
+            --glow-secondary: 0 0 20px rgba(52, 211, 153, 0.3);
+            --border-subtle: rgba(56, 189, 248, 0.15);
+            --surface-hover: #1c2333;
+            --text-muted: #94a3b8;
+            --danger: #f87171;
+            --warning: #fbbf24;
+            --gradient-hero: linear-gradient(135deg, #0a0e17 0%, #1a1040 50%, #0a0e17 100%);
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-body: 'Inter', sans-serif;
+            --font-code: 'JetBrains Mono', monospace;
+        }
+
+        ::selection { background: rgba(167, 139, 250, 0.3); color: #fff; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0a0e17; }
+        ::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 4px; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--background);
+            color: var(--text);
+            line-height: 1.75;
+            font-size: 16px;
+        }
+
+        /* ====== HERO ====== */
+        .hero {
+            background: var(--gradient-hero);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 4rem 1.5rem 3rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 60%, rgba(56, 189, 248, 0.05) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 40%, rgba(167, 139, 250, 0.05) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .hero h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5rem;
+            position: relative;
+        }
+        .hero h1 span { color: var(--primary); }
+        .hero h2 {
+            font-family: var(--font-body);
+            font-size: clamp(1rem, 2.5vw, 1.25rem);
+            font-weight: 400;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto 1.5rem;
+            position: relative;
+        }
+        .hero-badges {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            position: relative;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            font-family: var(--font-display);
+        }
+        .badge--primary { background: rgba(56, 189, 248, 0.12); color: var(--primary); border: 1px solid rgba(56, 189, 248, 0.25); }
+        .badge--accent { background: rgba(167, 139, 250, 0.12); color: var(--accent); border: 1px solid rgba(167, 139, 250, 0.25); }
+        .badge--secondary { background: rgba(52, 211, 153, 0.12); color: var(--secondary); border: 1px solid rgba(52, 211, 153, 0.25); }
+        .badge--warning { background: rgba(251, 191, 36, 0.12); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.25); }
+
+        /* ====== LAYOUT ====== */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        article { padding: 3rem 0 4rem; }
+
+        /* ====== TLDR BOX ====== */
+        .tldr {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(167, 139, 250, 0.06));
+            border: 1px solid var(--border-subtle);
+            border-left: 4px solid var(--primary);
+            border-radius: 8px;
+            padding: 1.5rem 1.75rem;
+            margin-bottom: 3rem;
+        }
+        .tldr-title {
+            font-family: var(--font-display);
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--primary);
+            margin-bottom: 0.75rem;
+        }
+        .tldr ul { list-style: none; padding: 0; }
+        .tldr li {
+            padding: 0.3rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+            font-size: 0.95rem;
+        }
+        .tldr li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        /* ====== HEADINGS ====== */
+        h2 {
+            font-family: var(--font-display);
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #fff;
+            margin: 3.5rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-subtle);
+            letter-spacing: -0.01em;
+        }
+        h2 .num {
+            color: var(--primary);
+            font-weight: 700;
+        }
+        h3 {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 2.5rem 0 0.75rem;
+        }
+        h4 {
+            font-family: var(--font-display);
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin: 1.5rem 0 0.5rem;
+        }
+
+        p { margin-bottom: 1rem; }
+        strong { color: #fff; }
+
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            border-bottom: 1px dashed rgba(56, 189, 248, 0.4);
+        }
+        a:hover { border-bottom-style: solid; }
+
+        /* ====== CODE ====== */
+        code {
+            font-family: var(--font-code);
+            font-size: 0.875em;
+            background: rgba(56, 189, 248, 0.08);
+            color: var(--primary);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            border: 1px solid rgba(56, 189, 248, 0.1);
+        }
+        pre {
+            background: #0d1117;
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0 1.5rem;
+            position: relative;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .code-label {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--primary);
+            font-size: 0.7rem;
+            font-family: var(--font-code);
+            font-weight: 700;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0 8px 0 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .code-filepath {
+            display: block;
+            font-family: var(--font-code);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+            padding: 0.4rem 0.75rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px 6px 0 0;
+            border: 1px solid var(--border-subtle);
+            border-bottom: none;
+        }
+        .code-filepath + pre {
+            margin-top: 0;
+            border-radius: 0 0 8px 8px;
+        }
+
+        /* Syntax Highlighting */
+        .kw { color: #c678dd; }
+        .tp { color: #e5c07b; }
+        .str { color: #98c379; }
+        .cm { color: #5c6370; font-style: italic; }
+        .fn { color: #61afef; }
+        .num { color: #d19a66; }
+        .at { color: #56b6c2; }
+
+        /* ====== TABLES ====== */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0 1.5rem;
+            font-size: 0.9rem;
+        }
+        thead th {
+            background: var(--surface);
+            color: var(--primary);
+            font-family: var(--font-display);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid rgba(56, 189, 248, 0.25);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            vertical-align: top;
+        }
+        tr:hover td { background: rgba(56, 189, 248, 0.03); }
+
+        /* ====== CALLOUTS ====== */
+        .callout {
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+            margin: 1.5rem 0;
+            border-left: 4px solid;
+            position: relative;
+        }
+        .callout-title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .callout--analogy {
+            background: rgba(167, 139, 250, 0.06);
+            border-color: var(--accent);
+        }
+        .callout--analogy .callout-title { color: var(--accent); }
+
+        .callout--arch {
+            background: rgba(56, 189, 248, 0.06);
+            border-color: var(--primary);
+        }
+        .callout--arch .callout-title { color: var(--primary); }
+
+        .callout--eng {
+            background: rgba(52, 211, 153, 0.06);
+            border-color: var(--secondary);
+        }
+        .callout--eng .callout-title { color: var(--secondary); }
+
+        .callout--warn {
+            background: rgba(251, 191, 36, 0.06);
+            border-color: var(--warning);
+        }
+        .callout--warn .callout-title { color: var(--warning); }
+
+        .callout--danger {
+            background: rgba(248, 113, 113, 0.06);
+            border-color: var(--danger);
+        }
+        .callout--danger .callout-title { color: var(--danger); }
+
+        .callout--think {
+            background: rgba(56, 189, 248, 0.04);
+            border-color: rgba(56, 189, 248, 0.3);
+        }
+        .callout--think .callout-title { color: var(--primary); }
+
+        .callout p:last-child { margin-bottom: 0; }
+
+        /* ====== CARDS ====== */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 1.25rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            border-color: rgba(56, 189, 248, 0.35);
+            box-shadow: var(--glow-primary);
+        }
+        .card-title {
+            font-family: var(--font-display);
+            font-weight: 600;
+            color: #fff;
+            font-size: 0.95rem;
+            margin-bottom: 0.4rem;
+        }
+        .card-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* ====== LIST STYLES ====== */
+        ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+        li { margin-bottom: 0.3rem; }
+        li code { font-size: 0.8em; }
+
+        /* ====== SVG DIAGRAMS ====== */
+        .diagram-container {
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 2rem 1rem;
+            margin: 1.5rem 0;
+            text-align: center;
+            overflow-x: auto;
+        }
+        .diagram-caption {
+            font-family: var(--font-display);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* ====== CHECKLIST ====== */
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        .checklist li {
+            padding: 0.5rem 0;
+            padding-left: 2rem;
+            position: relative;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .checklist li::before {
+            content: '☐';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-size: 1.1rem;
+        }
+
+        /* ====== SECTION DIVIDER ====== */
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
+            margin: 3rem 0;
+        }
+
+        /* ====== TOC ====== */
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 1.5rem 2rem;
+            margin: 2rem 0;
+        }
+        .toc-title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.75rem;
+        }
+        .toc ol { counter-reset: toc; list-style: none; padding: 0; }
+        .toc li { counter-increment: toc; padding: 0.3rem 0; }
+        .toc li::before {
+            content: counter(toc, decimal-leading-zero) '.';
+            color: var(--primary);
+            font-family: var(--font-code);
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+        }
+        .toc a { color: var(--text); border: none; }
+        .toc a:hover { color: var(--primary); }
+
+        /* ====== FAQ ====== */
+        .faq-item {
+            margin-bottom: 1.5rem;
+            border-left: 3px solid var(--accent);
+            padding-left: 1.25rem;
+        }
+        .faq-q {
+            font-family: var(--font-display);
+            font-weight: 600;
+            color: #fff;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .faq-a { color: var(--text-muted); font-size: 0.95rem; }
+
+        /* ====== FOOTER ====== */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid var(--border-subtle);
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        /* ====== RESPONSIVE ====== */
+        @media (max-width: 640px) {
+            .hero { padding: 2.5rem 1rem 2rem; }
+            pre { padding: 0.75rem 1rem; font-size: 0.8rem; }
+            table { font-size: 0.8rem; }
+            td, thead th { padding: 0.4rem 0.6rem; }
+            .card-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ====== PRINT ====== */
+        @media print {
+            body { background: #fff; color: #000; }
+            .hero { background: #f0f0f0; }
+            pre { border: 1px solid #ccc; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HERO                                                         -->
+<!-- ============================================================ -->
+<header class="hero">
+    <h1>Fase 1 — <span>Fundação e Estrutura</span></h1>
+    <h2>Criar a solution multi-projeto, configurar tooling e ter o Catalog API funcionando com CRUD completo, banco SQL Server em Docker, logging estruturado e health checks.</h2>
+    <div class="hero-badges">
+        <span class="badge badge--primary">🏗️ Clean Architecture</span>
+        <span class="badge badge--accent">📦 EF Core 10</span>
+        <span class="badge badge--secondary">🐳 Docker Compose</span>
+        <span class="badge badge--warning">📊 Serilog + Seq</span>
+    </div>
+</header>
+
+<div class="container">
+<article>
+
+<!-- ============================================================ -->
+<!-- TL;DR                                                        -->
+<!-- ============================================================ -->
+<div class="tldr">
+    <div class="tldr-title">⚡ Resumo Executivo — O que você vai dominar</div>
+    <ul>
+        <li>Criar solution .NET multi-projeto com <code>dotnet new</code> e <code>dotnet sln</code></li>
+        <li>Configurar <strong>Clean Architecture</strong> (Domain → Application → Infrastructure → Api)</li>
+        <li>Implementar <strong>Entity Framework Core</strong> com Code First, Fluent API e Migrations</li>
+        <li>Criar <strong>REST API</strong> com Controllers, versionamento e paginação</li>
+        <li>Aplicar <strong>FluentValidation</strong> para validação declarativa</li>
+        <li>Configurar <strong>Serilog + Seq</strong> para structured logging</li>
+        <li>Implementar <strong>Health Checks</strong> (liveness + readiness)</li>
+        <li>Usar <strong>Docker Compose</strong> para subir SQL Server e Seq localmente</li>
+        <li>Entender <strong>Central Package Management</strong> com <code>Directory.Packages.props</code></li>
+    </ul>
+</div>
+
+<!-- ============================================================ -->
+<!-- TOC                                                          -->
+<!-- ============================================================ -->
+<nav class="toc">
+    <div class="toc-title">Sumário</div>
+    <ol>
+        <li><a href="#visao">Visão da Fase</a></li>
+        <li><a href="#decisoes">Decisões Arquiteturais</a></li>
+        <li><a href="#passo-a-passo">Passo a Passo de Implementação</a></li>
+        <li><a href="#codigo">Código de Referência Completo</a></li>
+        <li><a href="#testes">Testes</a></li>
+        <li><a href="#checkpoint">Checkpoint</a></li>
+        <li><a href="#faq">Perguntas de Entrevista</a></li>
+        <li><a href="#senior">Aprofundamento Sênior</a></li>
+    </ol>
+</nav>
+
+<!-- ============================================================ -->
+<!-- 1. VISÃO DA FASE                                             -->
+<!-- ============================================================ -->
+<h2 id="visao"><span class="num">01.</span> Visão da Fase</h2>
+
+<h3>O Que Vamos Construir</h3>
+
+<div class="diagram-container">
+    <svg viewBox="0 0 600 460" width="100%" style="max-width:540px;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Background -->
+        <rect x="0" y="0" width="600" height="460" fill="none"/>
+        <!-- Root folder -->
+        <text x="20" y="24" fill="#38bdf8" font-family="JetBrains Mono, monospace" font-size="14" font-weight="700">OrderFlow/</text>
+        <!-- src -->
+        <text x="40" y="52" fill="#a78bfa" font-family="JetBrains Mono, monospace" font-size="12">├── src/</text>
+        <text x="70" y="74" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="12">├── BuildingBlocks/</text>
+        <text x="100" y="96" fill="#e2e8f0" font-family="JetBrains Mono, monospace" font-size="12">└── OrderFlow.SharedKernel/</text>
+        <text x="70" y="118" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="12">└── Services/</text>
+        <text x="100" y="140" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="12">└── Catalog/</text>
+        <text x="130" y="162" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="12">├── OrderFlow.Catalog.Api/</text>
+        <text x="130" y="184" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="12">├── OrderFlow.Catalog.Application/</text>
+        <text x="130" y="206" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="12">├── OrderFlow.Catalog.Domain/</text>
+        <text x="130" y="228" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="12">└── OrderFlow.Catalog.Infrastructure/</text>
+        <!-- tests -->
+        <text x="40" y="256" fill="#a78bfa" font-family="JetBrains Mono, monospace" font-size="12">├── tests/</text>
+        <text x="70" y="278" fill="#e2e8f0" font-family="JetBrains Mono, monospace" font-size="12">└── OrderFlow.Catalog.Api.Tests/</text>
+        <!-- docker -->
+        <text x="40" y="306" fill="#a78bfa" font-family="JetBrains Mono, monospace" font-size="12">├── docker/</text>
+        <text x="70" y="328" fill="#e2e8f0" font-family="JetBrains Mono, monospace" font-size="12">├── docker-compose.yml</text>
+        <text x="70" y="350" fill="#e2e8f0" font-family="JetBrains Mono, monospace" font-size="12">└── .env</text>
+        <!-- root files -->
+        <text x="40" y="378" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="12">├── OrderFlow.sln</text>
+        <text x="40" y="400" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="12">├── Directory.Build.props</text>
+        <text x="40" y="422" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="12">├── Directory.Packages.props</text>
+        <text x="40" y="444" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="12">└── global.json, .editorconfig, .gitignore</text>
+    </svg>
+    <div class="diagram-caption">Estrutura de diretórios do OrderFlow — Fase 1</div>
+</div>
+
+<h3>O Que Você Vai Praticar</h3>
+
+<div class="card-grid">
+    <div class="card">
+        <div class="card-title">🧱 Solution Multi-Projeto</div>
+        <div class="card-desc">Organização de projetos em camadas da Clean Architecture.</div>
+    </div>
+    <div class="card">
+        <div class="card-title">🏛️ Clean Architecture</div>
+        <div class="card-desc">Domain → Application → Infrastructure → Api</div>
+    </div>
+    <div class="card">
+        <div class="card-title">💾 Entity Framework Core</div>
+        <div class="card-desc">DbContext, Fluent API, Migrations, Code First</div>
+    </div>
+    <div class="card">
+        <div class="card-title">🌐 ASP.NET Controllers</div>
+        <div class="card-desc">REST APIs com versionamento de rotas.</div>
+    </div>
+    <div class="card">
+        <div class="card-title">✅ FluentValidation</div>
+        <div class="card-desc">Validação declarativa com regras de negócio.</div>
+    </div>
+    <div class="card">
+        <div class="card-title">⚠️ Exception Handling</div>
+        <div class="card-desc">Middleware global para tratar erros de forma padronizada.</div>
+    </div>
+    <div class="card">
+        <div class="card-title">📊 Serilog + Seq</div>
+        <div class="card-desc">Structured logging com sinks e enrichers.</div>
+    </div>
+    <div class="card">
+        <div class="card-title">❤️ Health Checks</div>
+        <div class="card-desc">Readiness e liveness probes para Kubernetes.</div>
+    </div>
+    <div class="card">
+        <div class="card-title">🐳 Docker Compose</div>
+        <div class="card-desc">SQL Server + Seq em containers locais.</div>
+    </div>
+    <div class="card">
+        <div class="card-title">📦 Package Management</div>
+        <div class="card-desc">Versões centralizadas com Directory.Packages.props.</div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 2. DECISÕES ARQUITETURAIS                                    -->
+<!-- ============================================================ -->
+<h2 id="decisoes"><span class="num">02.</span> Decisões Arquiteturais</h2>
+
+<div class="callout callout--think">
+    <div class="callout-title">🤔 Pense antes de ler</div>
+    <ol>
+        <li>Para um CRUD simples de produtos, Clean Architecture é realmente necessário? Qual seria a alternativa mais leve?</li>
+        <li>Se dois projetos na mesma solution usam versões diferentes do mesmo NuGet — o que pode dar errado em produção?</li>
+        <li>Por que logs estruturados (JSON com campos tipados) são mais úteis que <code>Console.WriteLine("error: " + message)</code>?</li>
+    </ol>
+</div>
+
+<h3>2.1 Por Que Clean Architecture para o Catalog?</h3>
+
+<div class="callout callout--analogy">
+    <div class="callout-title">🧠 Analogia — O Edifício Corporativo</div>
+    <p>Imagine um prédio comercial bem planejado. O <em>subsolo</em> (Domain) tem a fundação e os cofres — ninguém de fora toca lá. O <em>térreo</em> (Application) é a recepção: coordena quem entra e sai, mas não guarda nada de valor. Os <em>andares de escritório</em> (Infrastructure) são onde o trabalho pesado acontece — banco de dados, emails, serviços externos. E a <em>fachada</em> (Api) é o que o público vê — bonita, mas se você demolir e reconstruir, o prédio continua de pé.</p>
+    <p>Cada andar tem uma <strong>responsabilidade clara</strong> e se comunica por <strong>portas e elevadores</strong> (interfaces), não por buracos na parede.</p>
+</div>
+
+<!-- Clean Architecture SVG Diagram -->
+<div class="diagram-container">
+    <svg viewBox="0 0 520 340" width="100%" style="max-width:520px;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Outermost ring - Api -->
+        <circle cx="260" cy="170" r="155" fill="none" stroke="rgba(56, 189, 248, 0.2)" stroke-width="2" stroke-dasharray="6 3"/>
+        <text x="260" y="32" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="600">API LAYER</text>
+        <!-- Infrastructure ring -->
+        <circle cx="260" cy="170" r="115" fill="none" stroke="rgba(167, 139, 250, 0.25)" stroke-width="2" stroke-dasharray="6 3"/>
+        <text x="260" y="68" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="600">INFRASTRUCTURE</text>
+        <!-- Application ring -->
+        <circle cx="260" cy="170" r="75" fill="rgba(52, 211, 153, 0.05)" stroke="rgba(52, 211, 153, 0.3)" stroke-width="2"/>
+        <text x="260" y="108" text-anchor="middle" fill="#34d399" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="600">APPLICATION</text>
+        <!-- Domain core -->
+        <circle cx="260" cy="170" r="40" fill="rgba(251, 191, 36, 0.08)" stroke="rgba(251, 191, 36, 0.5)" stroke-width="2.5"/>
+        <text x="260" y="166" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">DOMAIN</text>
+        <text x="260" y="182" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="9">Entities + Rules</text>
+        <!-- Arrows pointing inward -->
+        <defs>
+            <marker id="arw" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+            </marker>
+        </defs>
+        <!-- Api -> Infra -->
+        <line x1="420" y1="170" x2="382" y2="170" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arw)"/>
+        <!-- Infra -> App -->
+        <line x1="370" y1="170" x2="340" y2="170" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arw)"/>
+        <!-- App -> Domain -->
+        <line x1="328" y1="170" x2="305" y2="170" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arw)"/>
+        <!-- Labels -->
+        <text x="260" y="338" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">As setas apontam para dentro — a Regra de Dependência</text>
+    </svg>
+    <div class="diagram-caption">Clean Architecture — Regra de Dependência</div>
+</div>
+
+<p><strong>O Catalog é um serviço CRUD.</strong> Para um CRUD puro, Clean Architecture pode parecer overengineering — e de fato seria em um projeto de vida curta. Mas estamos usando aqui por três motivos:</p>
+
+<ol>
+    <li><strong>Didático</strong> — Praticamos a separação de camadas em um contexto simples antes de aplicar no Orders (que é complexo de verdade)</li>
+    <li><strong>Consistência</strong> — Todos os serviços seguem a mesma estrutura, facilitando onboarding</li>
+    <li><strong>Preparação para escala</strong> — CRUDs simples frequentemente ganham regras de negócio com o tempo. Começar organizado evita a refatoração dolorosa</li>
+</ol>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Alternativa — Vertical Slice Architecture</div>
+    <p>Para CRUDs que <em>realmente permanecerão simples</em>, Vertical Slice Architecture (pasta por feature) é mais prática — menos cerimônia e acoplamento naturalmente baixo entre features. Veja a seção <a href="#senior">Aprofundamento Sênior</a>.</p>
+</div>
+
+<h3>2.2 Por Que Controllers (e não Minimal APIs)?</h3>
+
+<table>
+    <thead>
+        <tr><th>Controllers</th><th>Minimal APIs</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Convenção de mercado, muitas vagas pedem</td><td>Mais moderno, .NET 7+</td></tr>
+        <tr><td>Agrupamento natural por controller</td><td>Agrupamento por extensão de mapa</td></tr>
+        <tr><td>Swagger auto-discovery fácil</td><td>Precisa configurar manualmente</td></tr>
+        <tr><td>Filters e model binding robustos</td><td>Mais leve, menos overhead</td></tr>
+    </tbody>
+</table>
+
+<p><strong>Decisão:</strong> Praticar os dois estilos no projeto. Controllers no Catalog (mais convencional), Minimal APIs no Orders (mais moderno).</p>
+
+<h3>2.3 Por Que Central Package Management?</h3>
+
+<div class="callout callout--analogy">
+    <div class="callout-title">🧠 Analogia — O Cardápio Único do Restaurante</div>
+    <p>Imagine que você tem 8 filiais de um restaurante. Cada filial compra seus próprios ingredientes, com marcas e versões diferentes. O prato "estrogonofe" fica diferente em cada lugar. O <code>Directory.Packages.props</code> é como um <strong>caderno de compras central</strong>: todas as filiais usam a mesma marca de creme de leite, a mesma versão do molho. Se precisar trocar fornecedor, muda num lugar só.</p>
+</div>
+
+<p><strong>Benefícios concretos:</strong></p>
+<ul>
+    <li><strong>Uma única fonte de verdade</strong> — PR de atualização de pacotes toca um arquivo só</li>
+    <li><strong>Atualizações atômicas</strong> — <code>dotnet outdated</code> + uma linha alterada = todos os projetos atualizados</li>
+    <li><strong>Conflitos impossíveis</strong> — não existe cenário onde projeto A usa uma versão e projeto B outra acidentalmente</li>
+    <li><strong>Segurança</strong> — Vulnerabilidade em um pacote? Atualiza uma linha, rebuilda tudo</li>
+</ul>
+
+<h3>2.4 Por Que SQL Server em Docker (e não SQLite)?</h3>
+
+<table>
+    <thead>
+        <tr><th>SQL Server (Docker)</th><th>SQLite</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Banco real do mercado</td><td>In-memory simplificado</td></tr>
+        <tr><td>Suporta queries avançadas (CTE, window functions)</td><td>Limitações em queries complexas</td></tr>
+        <tr><td>Comportamento idêntico à produção</td><td>Pode mascarar bugs</td></tr>
+        <tr><td>Testa migrations reais</td><td>Migrations podem falhar no SQL Server</td></tr>
+    </tbody>
+</table>
+
+<h3>2.5 Por Que Serilog (e não ILogger nativo)?</h3>
+
+<div class="callout callout--analogy">
+    <div class="callout-title">🧠 Analogia — Ficha de Atendimento vs Bilhete Rabiscado</div>
+    <p>Imagine um hospital. Um médico pode rabiscar "paciente com dor" num post-it (log não-estruturado). Ou pode preencher uma ficha padronizada: nome, data, sintomas, setor, prioridade (log estruturado). Quando você precisa filtrar "todos os pacientes com dor no setor B nas últimas 2 horas", o post-it é inútil — a ficha permite consultas instantâneas. <strong>Structured logging é a ficha. String concatenada é o post-it.</strong></p>
+</div>
+
+<p>Serilog é o <strong>provider</strong> mais popular no ecossistema .NET por:</p>
+<ul>
+    <li><strong>Structured logging</strong> — Cada propriedade vira um campo pesquisável</li>
+    <li><strong>Sinks</strong> — Console, File, Seq, Elasticsearch, Application Insights, Grafana Loki...</li>
+    <li><strong>Enrichers</strong> — Adiciona automaticamente <code>CorrelationId</code>, <code>MachineName</code>, <code>ThreadId</code></li>
+    <li><strong>Templates</strong> — Formato de saída customizável por ambiente</li>
+</ul>
+<p><strong>Código limpo:</strong> Seus services continuam usando <code>ILogger&lt;T&gt;</code> (a abstração do .NET). Serilog é configurado <strong>apenas no Program.cs</strong>. Se amanhã quiser trocar por OpenTelemetry Logging ou NLog, muda um arquivo.</p>
+
+<div class="divider"></div>
+
+<!-- ============================================================ -->
+<!-- 3. PASSO A PASSO                                             -->
+<!-- ============================================================ -->
+<h2 id="passo-a-passo"><span class="num">03.</span> Passo a Passo de Implementação</h2>
+
+<h3>3.1 Criar a Estrutura Base</h3>
+
+<div class="code-filepath">Terminal — raiz do projeto</div>
+<pre><code><span class="cm"># Criar diretório raiz</span>
+mkdir OrderFlow
+cd OrderFlow
+
+<span class="cm"># Inicializar git</span>
+git init
+
+<span class="cm"># Criar global.json para travar versão do SDK</span>
+dotnet new globaljson --sdk-version 10.0.100
+
+<span class="cm"># Criar solution</span>
+dotnet new sln -n OrderFlow
+
+<span class="cm"># Criar estrutura de pastas</span>
+mkdir -p src/BuildingBlocks
+mkdir -p src/Services/Catalog
+mkdir -p src/ApiGateway
+mkdir -p tests
+mkdir -p docker
+mkdir -p docs</code></pre>
+
+<h3>3.2 Criar os Projetos</h3>
+
+<div class="code-filepath">Terminal — criação dos projetos .NET</div>
+<pre><code><span class="cm"># === SharedKernel (classlib) ===</span>
+dotnet new classlib -n OrderFlow.SharedKernel -o src/BuildingBlocks/OrderFlow.SharedKernel
+dotnet sln add src/BuildingBlocks/OrderFlow.SharedKernel
+
+<span class="cm"># === Catalog Domain ===</span>
+dotnet new classlib -n OrderFlow.Catalog.Domain -o src/Services/Catalog/OrderFlow.Catalog.Domain
+dotnet sln add src/Services/Catalog/OrderFlow.Catalog.Domain
+
+<span class="cm"># === Catalog Application ===</span>
+dotnet new classlib -n OrderFlow.Catalog.Application -o src/Services/Catalog/OrderFlow.Catalog.Application
+dotnet sln add src/Services/Catalog/OrderFlow.Catalog.Application
+
+<span class="cm"># === Catalog Infrastructure ===</span>
+dotnet new classlib -n OrderFlow.Catalog.Infrastructure -o src/Services/Catalog/OrderFlow.Catalog.Infrastructure
+dotnet sln add src/Services/Catalog/OrderFlow.Catalog.Infrastructure
+
+<span class="cm"># === Catalog API ===</span>
+dotnet new webapi -n OrderFlow.Catalog.Api -o src/Services/Catalog/OrderFlow.Catalog.Api --use-controllers
+dotnet sln add src/Services/Catalog/OrderFlow.Catalog.Api
+
+<span class="cm"># === Catalog Integration Tests ===</span>
+dotnet new xunit -n OrderFlow.Catalog.Api.Tests -o tests/OrderFlow.Catalog.Api.Tests
+dotnet sln add tests/OrderFlow.Catalog.Api.Tests</code></pre>
+
+<h3>3.3 Adicionar Referências entre Projetos</h3>
+
+<div class="code-filepath">Terminal — referências entre camadas</div>
+<pre><code><span class="cm"># Domain referencia SharedKernel</span>
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Domain reference src/BuildingBlocks/OrderFlow.SharedKernel
+
+<span class="cm"># Application referencia Domain</span>
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Application reference src/Services/Catalog/OrderFlow.Catalog.Domain
+
+<span class="cm"># Infrastructure referencia Application e Domain</span>
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Infrastructure reference src/Services/Catalog/OrderFlow.Catalog.Application
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Infrastructure reference src/Services/Catalog/OrderFlow.Catalog.Domain
+
+<span class="cm"># Api referencia todos</span>
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api reference src/Services/Catalog/OrderFlow.Catalog.Application
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api reference src/Services/Catalog/OrderFlow.Catalog.Infrastructure
+
+<span class="cm"># Tests referencia Api</span>
+dotnet add tests/OrderFlow.Catalog.Api.Tests reference src/Services/Catalog/OrderFlow.Catalog.Api</code></pre>
+
+<h3>3.4 Configurar Central Package Management</h3>
+
+<div class="code-filepath">Directory.Packages.props — raiz da solution</div>
+<pre><code><span class="kw">&lt;Project&gt;</span>
+  <span class="kw">&lt;PropertyGroup&gt;</span>
+    <span class="kw">&lt;ManagePackageVersionsCentrally&gt;</span><span class="str">true</span><span class="kw">&lt;/ManagePackageVersionsCentrally&gt;</span>
+  <span class="kw">&lt;/PropertyGroup&gt;</span>
+
+  <span class="kw">&lt;ItemGroup&gt;</span>
+    <span class="cm">&lt;!-- ASP.NET Core --&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Swashbuckle.AspNetCore"</span> <span class="at">Version=</span><span class="str">"7.2.0"</span> <span class="kw">/&gt;</span>
+
+    <span class="cm">&lt;!-- Entity Framework Core --&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.SqlServer"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.Design"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+
+    <span class="cm">&lt;!-- Validation --&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentValidation"</span> <span class="at">Version=</span><span class="str">"11.11.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentValidation.DependencyInjectionExtensions"</span> <span class="at">Version=</span><span class="str">"11.11.0"</span> <span class="kw">/&gt;</span>
+
+    <span class="cm">&lt;!-- Logging --&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.AspNetCore"</span> <span class="at">Version=</span><span class="str">"9.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Sinks.Console"</span> <span class="at">Version=</span><span class="str">"6.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Sinks.Seq"</span> <span class="at">Version=</span><span class="str">"9.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Enrichers.Environment"</span> <span class="at">Version=</span><span class="str">"3.0.1"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Serilog.Enrichers.Thread"</span> <span class="at">Version=</span><span class="str">"4.0.0"</span> <span class="kw">/&gt;</span>
+
+    <span class="cm">&lt;!-- Health Checks --&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"AspNetCore.HealthChecks.SqlServer"</span> <span class="at">Version=</span><span class="str">"9.0.0"</span> <span class="kw">/&gt;</span>
+
+    <span class="cm">&lt;!-- Testing --&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.AspNetCore.Mvc.Testing"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Microsoft.EntityFrameworkCore.InMemory"</span> <span class="at">Version=</span><span class="str">"10.0.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"FluentAssertions"</span> <span class="at">Version=</span><span class="str">"7.2.0"</span> <span class="kw">/&gt;</span>
+    <span class="kw">&lt;PackageVersion</span> <span class="at">Include=</span><span class="str">"Moq"</span> <span class="at">Version=</span><span class="str">"4.20.72"</span> <span class="kw">/&gt;</span>
+  <span class="kw">&lt;/ItemGroup&gt;</span>
+<span class="kw">&lt;/Project&gt;</span></code></pre>
+
+<h3>3.5 Configurar Directory.Build.props</h3>
+
+<div class="code-filepath">Directory.Build.props — raiz da solution</div>
+<pre><code><span class="kw">&lt;Project&gt;</span>
+  <span class="kw">&lt;PropertyGroup&gt;</span>
+    <span class="kw">&lt;TargetFramework&gt;</span><span class="str">net10.0</span><span class="kw">&lt;/TargetFramework&gt;</span>
+    <span class="kw">&lt;Nullable&gt;</span><span class="str">enable</span><span class="kw">&lt;/Nullable&gt;</span>
+    <span class="kw">&lt;ImplicitUsings&gt;</span><span class="str">enable</span><span class="kw">&lt;/ImplicitUsings&gt;</span>
+    <span class="kw">&lt;TreatWarningsAsErrors&gt;</span><span class="str">true</span><span class="kw">&lt;/TreatWarningsAsErrors&gt;</span>
+    <span class="kw">&lt;AnalysisLevel&gt;</span><span class="str">latest-recommended</span><span class="kw">&lt;/AnalysisLevel&gt;</span>
+  <span class="kw">&lt;/PropertyGroup&gt;</span>
+<span class="kw">&lt;/Project&gt;</span></code></pre>
+
+<h3>3.6 Configurar .editorconfig</h3>
+
+<div class="code-filepath">.editorconfig — raiz da solution</div>
+<pre><code>root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.cs]
+<span class="cm"># Organização de usings</span>
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+<span class="cm"># Preferências de namespace</span>
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+<span class="cm"># Preferências de var</span>
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+<span class="cm"># Naming conventions</span>
+dotnet_naming_rule.private_fields_must_be_camel_case.severity = warning
+dotnet_naming_rule.private_fields_must_be_camel_case.symbols = private_fields
+dotnet_naming_rule.private_fields_must_be_camel_case.style = camel_case_with_underscore
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.camel_case_with_underscore.required_prefix = _
+dotnet_naming_style.camel_case_with_underscore.capitalization = camel_case</code></pre>
+
+<h3>3.7 Instalar Pacotes NuGet</h3>
+
+<div class="code-filepath">Terminal — instalação de dependências</div>
+<pre><code><span class="cm"># Catalog.Application</span>
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Application package FluentValidation
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Application package FluentValidation.DependencyInjectionExtensions
+
+<span class="cm"># Catalog.Infrastructure</span>
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Infrastructure package Microsoft.EntityFrameworkCore
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Infrastructure package Microsoft.EntityFrameworkCore.SqlServer
+
+<span class="cm"># Catalog.Api</span>
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package Serilog.AspNetCore
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package Serilog.Sinks.Console
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package Serilog.Sinks.Seq
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package Serilog.Enrichers.Environment
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package Serilog.Enrichers.Thread
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package AspNetCore.HealthChecks.SqlServer
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package Swashbuckle.AspNetCore
+dotnet add src/Services/Catalog/OrderFlow.Catalog.Api package Microsoft.EntityFrameworkCore.Design
+
+<span class="cm"># Tests</span>
+dotnet add tests/OrderFlow.Catalog.Api.Tests package Microsoft.AspNetCore.Mvc.Testing
+dotnet add tests/OrderFlow.Catalog.Api.Tests package Microsoft.EntityFrameworkCore.InMemory
+dotnet add tests/OrderFlow.Catalog.Api.Tests package FluentAssertions
+dotnet add tests/OrderFlow.Catalog.Api.Tests package Moq</code></pre>
+
+<h3>3.8 Docker Compose para SQL Server e Seq</h3>
+
+<div class="code-filepath">docker/docker-compose.yml</div>
+<pre><code><span class="kw">services:</span>
+  <span class="fn">sqlserver:</span>
+    <span class="at">image:</span> mcr.microsoft.com/mssql/server:2022-latest
+    <span class="at">container_name:</span> orderflow-sqlserver
+    <span class="at">ports:</span>
+      - <span class="str">"1433:1433"</span>
+    <span class="at">environment:</span>
+      <span class="at">ACCEPT_EULA:</span> <span class="str">"Y"</span>
+      <span class="at">MSSQL_SA_PASSWORD:</span> <span class="str">"${SA_PASSWORD:-OrderFlow@2026!}"</span>
+      <span class="at">MSSQL_PID:</span> <span class="str">"Developer"</span>
+    <span class="at">volumes:</span>
+      - sqlserver-data:/var/lib/mssql/data
+    <span class="at">healthcheck:</span>
+      <span class="at">test:</span> /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -C -Q "SELECT 1" || exit 1
+      <span class="at">interval:</span> 10s
+      <span class="at">timeout:</span> 5s
+      <span class="at">retries:</span> 5
+      <span class="at">start_period:</span> 30s
+    <span class="at">restart:</span> unless-stopped
+
+  <span class="fn">seq:</span>
+    <span class="at">image:</span> datalust/seq:latest
+    <span class="at">container_name:</span> orderflow-seq
+    <span class="at">ports:</span>
+      - <span class="str">"5341:80"</span>
+    <span class="at">environment:</span>
+      <span class="at">ACCEPT_EULA:</span> <span class="str">"Y"</span>
+    <span class="at">volumes:</span>
+      - seq-data:/data
+    <span class="at">restart:</span> unless-stopped
+
+<span class="kw">volumes:</span>
+  sqlserver-data:
+  seq-data:</code></pre>
+
+<div class="code-filepath">docker/.env</div>
+<pre><code>SA_PASSWORD=OrderFlow@2026!</code></pre>
+
+<div class="divider"></div>
+
+<!-- ============================================================ -->
+<!-- 4. CÓDIGO DE REFERÊNCIA COMPLETO                             -->
+<!-- ============================================================ -->
+<h2 id="codigo"><span class="num">04.</span> Código de Referência Completo</h2>
+
+<h3>Fluxo de Uma Request HTTP — De Ponta a Ponta</h3>
+
+<div class="diagram-container">
+    <svg viewBox="0 0 560 520" width="100%" style="max-width:500px;" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arw2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" fill="#38bdf8"/>
+            </marker>
+            <marker id="arw3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" fill="#34d399"/>
+            </marker>
+        </defs>
+        <!-- Request arrow -->
+        <text x="280" y="20" text-anchor="middle" fill="#fbbf24" font-family="Space Grotesk, sans-serif" font-size="12" font-weight="600">GET /api/v1/products/123</text>
+        <line x1="280" y1="30" x2="280" y2="55" stroke="#38bdf8" stroke-width="2" marker-end="url(#arw2)"/>
+
+        <!-- Api Layer -->
+        <rect x="80" y="60" width="400" height="65" rx="8" fill="rgba(56, 189, 248, 0.08)" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="100" y="82" fill="#38bdf8" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">API LAYER</text>
+        <text x="100" y="100" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">ProductsController recebe a request,</text>
+        <text x="100" y="115" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">valida binding, retorna IActionResult.</text>
+        <line x1="280" y1="130" x2="280" y2="155" stroke="#38bdf8" stroke-width="2" marker-end="url(#arw2)"/>
+
+        <!-- Application Layer -->
+        <rect x="80" y="160" width="400" height="65" rx="8" fill="rgba(167, 139, 250, 0.08)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="100" y="182" fill="#a78bfa" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">APPLICATION LAYER</text>
+        <text x="100" y="200" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">ProductService orquestra: busca via repo,</text>
+        <text x="100" y="215" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">valida regras, mapeia para DTO. Sem SQL.</text>
+        <line x1="280" y1="230" x2="280" y2="255" stroke="#38bdf8" stroke-width="2" marker-end="url(#arw2)"/>
+
+        <!-- Domain Layer -->
+        <rect x="80" y="260" width="400" height="65" rx="8" fill="rgba(251, 191, 36, 0.08)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="100" y="282" fill="#fbbf24" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">DOMAIN LAYER</text>
+        <text x="100" y="300" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">Product entity com regras de negócio.</text>
+        <text x="100" y="315" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">"Preço não pode ser negativo" vive aqui.</text>
+        <line x1="280" y1="330" x2="280" y2="355" stroke="#38bdf8" stroke-width="2" marker-end="url(#arw2)"/>
+
+        <!-- Infrastructure Layer -->
+        <rect x="80" y="360" width="400" height="65" rx="8" fill="rgba(52, 211, 153, 0.08)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="100" y="382" fill="#34d399" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">INFRASTRUCTURE</text>
+        <text x="100" y="400" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">ProductRepository traduz para SQL via EF Core.</text>
+        <text x="100" y="415" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">CatalogDbContext → SQL Server → dados voltam.</text>
+        <line x1="280" y1="430" x2="280" y2="455" stroke="#34d399" stroke-width="2" marker-end="url(#arw3)"/>
+
+        <!-- SQL Server -->
+        <rect x="180" y="460" width="200" height="40" rx="8" fill="rgba(248, 113, 113, 0.08)" stroke="#f87171" stroke-width="1.5"/>
+        <text x="280" y="484" text-anchor="middle" fill="#f87171" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">🐳 SQL Server</text>
+
+        <!-- Response arrow -->
+        <text x="280" y="516" text-anchor="middle" fill="#34d399" font-family="Space Grotesk, sans-serif" font-size="11">↑ Response HTTP (200 OK + JSON)</text>
+    </svg>
+    <div class="diagram-caption">Fluxo de uma request HTTP através das 4 camadas da Clean Architecture</div>
+</div>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🔑 A Regra de Dependência</div>
+    <p>As setas apontam para <strong>dentro</strong>. Api depende de Application. Application depende de Domain. Infrastructure depende de Application <em>e</em> Domain. Mas <strong>Domain não depende de nada</strong> — ele é o coração isolado do sistema. Se amanhã você trocar SQL Server por PostgreSQL, só Infrastructure muda. Domain e Application nem percebem.</p>
+</div>
+
+<!-- ====== 4.1 SharedKernel ====== -->
+<h3>4.1 SharedKernel — Classes Base</h3>
+
+<div class="callout callout--analogy">
+    <div class="callout-title">🧠 Analogia — O DNA da Aplicação</div>
+    <p>O SharedKernel é como o <strong>DNA compartilhado</strong> entre irmãos. Cada serviço (Catalog, Orders, Identity) é uma "pessoa" diferente, mas todos carregam os mesmos genes fundamentais: o que é uma <code>Entity</code>, o que é um <code>DomainEvent</code>, como fazer <code>Equals</code>. O SharedKernel garante que <strong>as regras fundamentais são escritas uma vez e herdadas por todos</strong>.</p>
+</div>
+
+<div class="callout callout--warn">
+    <div class="callout-title">⚠️ Armadilha Comum</div>
+    <p>Cuidado para não transformar o SharedKernel em um "lixão compartilhado". Ele deve conter <strong>apenas</strong> conceitos universais. A regra de ouro: <em>"Se eu remover um serviço inteiro, o SharedKernel continua fazendo sentido?"</em></p>
+</div>
+
+<h4>Entity.cs</h4>
+
+<div class="code-filepath">src/BuildingBlocks/OrderFlow.SharedKernel/Entity.cs</div>
+<pre><code><span class="kw">namespace</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">public abstract class</span> <span class="tp">Entity</span>
+{
+    <span class="kw">public</span> <span class="tp">Guid</span> Id { <span class="kw">get</span>; <span class="kw">protected init</span>; }
+
+    <span class="kw">private readonly</span> <span class="tp">List</span>&lt;<span class="tp">IDomainEvent</span>&gt; _domainEvents = [];
+
+    <span class="kw">public</span> <span class="tp">IReadOnlyCollection</span>&lt;<span class="tp">IDomainEvent</span>&gt; DomainEvents =&gt; _domainEvents.<span class="fn">AsReadOnly</span>();
+
+    <span class="kw">protected void</span> <span class="fn">AddDomainEvent</span>(<span class="tp">IDomainEvent</span> domainEvent)
+    {
+        _domainEvents.<span class="fn">Add</span>(domainEvent);
+    }
+
+    <span class="kw">public void</span> <span class="fn">ClearDomainEvents</span>()
+    {
+        _domainEvents.<span class="fn">Clear</span>();
+    }
+
+    <span class="kw">public override bool</span> <span class="fn">Equals</span>(<span class="tp">object</span>? obj)
+    {
+        <span class="kw">if</span> (obj <span class="kw">is not</span> <span class="tp">Entity</span> other) <span class="kw">return false</span>;
+        <span class="kw">if</span> (<span class="tp">ReferenceEquals</span>(<span class="kw">this</span>, other)) <span class="kw">return true</span>;
+        <span class="kw">if</span> (Id == <span class="tp">Guid</span>.Empty || other.Id == <span class="tp">Guid</span>.Empty) <span class="kw">return false</span>;
+        <span class="kw">return</span> Id == other.Id;
+    }
+
+    <span class="kw">public override int</span> <span class="fn">GetHashCode</span>() =&gt; Id.<span class="fn">GetHashCode</span>();
+
+    <span class="kw">public static bool operator</span> ==(<span class="tp">Entity</span>? left, <span class="tp">Entity</span>? right) =&gt; <span class="fn">Equals</span>(left, right);
+    <span class="kw">public static bool operator</span> !=(<span class="tp">Entity</span>? left, <span class="tp">Entity</span>? right) =&gt; !<span class="fn">Equals</span>(left, right);
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Dissecando o Código — Entity</div>
+    <p><code>abstract</code> impede instanciação direta — você nunca cria <code>new Entity()</code>, apenas entidades concretas. É o <strong>Template Method Pattern</strong>.</p>
+    <p><code>protected init</code> no <code>Id</code> — <code>init</code> permite atribuir valor apenas durante inicialização, <code>protected</code> restringe a subclasses. <strong>Imutabilidade seletiva.</strong></p>
+    <p><code>IReadOnlyCollection&lt;T&gt;</code> externamente, <code>List&lt;T&gt;</code> internamente — é o <strong>princípio do menor privilégio</strong> aplicado a coleções.</p>
+    <p><strong>Identity Equality (DDD)</strong> — entidades são iguais pelo <code>Id</code>, não pelos campos. Guard clause para <code>Guid.Empty</code> impede que entidades não-persistidas sejam consideradas iguais.</p>
+</div>
+
+<h4>IDomainEvent.cs</h4>
+
+<div class="code-filepath">src/BuildingBlocks/OrderFlow.SharedKernel/IDomainEvent.cs</div>
+<pre><code><span class="kw">namespace</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">public interface</span> <span class="tp">IDomainEvent</span>
+{
+    <span class="tp">DateTime</span> OccurredOn { <span class="kw">get</span>; }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Interface Segregation Principle (ISP)</div>
+    <p>Uma única propriedade intencional — o contrato mínimo que todo evento de domínio deve cumprir: <em>"quando aconteceu?"</em>. Metadata adicional será adicionada por enrichers, não pela interface.</p>
+    <p><strong>Por que não herdar de <code>MediatR.INotification</code> agora?</strong> O SharedKernel é base de <strong>todos</strong> os serviços. Na <strong>Fase 3</strong> (CQRS), quando o Orders precisar, atualizaremos a interface. Princípio <strong>YAGNI</strong>.</p>
+</div>
+
+<h4>AuditableEntity.cs</h4>
+
+<div class="code-filepath">src/BuildingBlocks/OrderFlow.SharedKernel/AuditableEntity.cs</div>
+<pre><code><span class="kw">namespace</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">public abstract class</span> <span class="tp">AuditableEntity</span> : <span class="tp">Entity</span>
+{
+    <span class="kw">public</span> <span class="tp">DateTime</span> CreatedAt { <span class="kw">get</span>; <span class="kw">protected init</span>; }
+    <span class="kw">public</span> <span class="tp">DateTime</span>? UpdatedAt { <span class="kw">get</span>; <span class="kw">protected set</span>; }
+
+    <span class="kw">protected void</span> <span class="fn">SetUpdated</span>()
+    {
+        UpdatedAt = <span class="tp">DateTime</span>.UtcNow;
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 protected init vs protected set</div>
+    <p><code>CreatedAt</code> usa <code>init</code> — imutável após criação (a data de criação nunca muda). <code>UpdatedAt</code> usa <code>set</code> — muda a cada operação. O <code>?</code> (nullable) indica que <code>null = nunca atualizado</code>.</p>
+</div>
+
+<h4>IRepository.cs e IUnitOfWork.cs</h4>
+
+<div class="code-filepath">src/BuildingBlocks/OrderFlow.SharedKernel/IRepository.cs</div>
+<pre><code><span class="kw">namespace</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">public interface</span> <span class="tp">IRepository</span>&lt;<span class="tp">T</span>&gt; <span class="kw">where</span> <span class="tp">T</span> : <span class="tp">Entity</span>
+{
+    <span class="tp">Task</span>&lt;<span class="tp">T</span>?&gt; <span class="fn">GetByIdAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">IReadOnlyList</span>&lt;<span class="tp">T</span>&gt;&gt; <span class="fn">GetAllAsync</span>(<span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span> <span class="fn">AddAsync</span>(<span class="tp">T</span> entity, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="kw">void</span> <span class="fn">Update</span>(<span class="tp">T</span> entity);
+    <span class="kw">void</span> <span class="fn">Remove</span>(<span class="tp">T</span> entity);
+}</code></pre>
+
+<div class="code-filepath">src/BuildingBlocks/OrderFlow.SharedKernel/IUnitOfWork.cs</div>
+<pre><code><span class="kw">namespace</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">public interface</span> <span class="tp">IUnitOfWork</span>
+{
+    <span class="tp">Task</span>&lt;<span class="kw">int</span>&gt; <span class="fn">SaveChangesAsync</span>(<span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Repository + Unit of Work</div>
+    <p><strong>Repository genérico</strong> — <code>where T : Entity</code> garante type safety. <code>AddAsync</code> é async porque EF Core pode gerar Id via banco. <code>Update</code> e <code>Remove</code> são síncronos — apenas marcam no change tracker.</p>
+    <p><strong>Unit of Work</strong> — agrupa múltiplas operações em uma transação. O <code>SaveChangesAsync</code> do DbContext <strong>já é</strong> um Unit of Work nativo. Retorno <code>Task&lt;int&gt;</code> indica quantas linhas foram afetadas.</p>
+</div>
+
+<!-- ====== 4.2 Domain Entities ====== -->
+<h3>4.2 Catalog Domain — Entities</h3>
+
+<h4>Category.cs</h4>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Domain/Entities/Category.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Domain.Entities</span>;
+
+<span class="kw">public sealed class</span> <span class="tp">Category</span> : <span class="tp">AuditableEntity</span>
+{
+    <span class="kw">public string</span> Name { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">string</span>.Empty;
+    <span class="kw">public string</span>? Description { <span class="kw">get</span>; <span class="kw">private set</span>; }
+    <span class="kw">public bool</span> IsActive { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">true</span>;
+
+    <span class="kw">private readonly</span> <span class="tp">List</span>&lt;<span class="tp">Product</span>&gt; _products = [];
+    <span class="kw">public</span> <span class="tp">IReadOnlyCollection</span>&lt;<span class="tp">Product</span>&gt; Products =&gt; _products.<span class="fn">AsReadOnly</span>();
+
+    <span class="kw">private</span> <span class="fn">Category</span>() { } <span class="cm">// EF Core</span>
+
+    <span class="kw">public static</span> <span class="tp">Category</span> <span class="fn">Create</span>(<span class="kw">string</span> name, <span class="kw">string</span>? description = <span class="kw">null</span>)
+    {
+        <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(name);
+        <span class="kw">return new</span> <span class="tp">Category</span>
+        {
+            Id = <span class="tp">Guid</span>.<span class="fn">NewGuid</span>(),
+            Name = name.<span class="fn">Trim</span>(),
+            Description = description?.<span class="fn">Trim</span>(),
+            CreatedAt = <span class="tp">DateTime</span>.UtcNow
+        };
+    }
+
+    <span class="kw">public void</span> <span class="fn">Update</span>(<span class="kw">string</span> name, <span class="kw">string</span>? description)
+    {
+        <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(name);
+        Name = name.<span class="fn">Trim</span>();
+        Description = description?.<span class="fn">Trim</span>();
+        <span class="fn">SetUpdated</span>();
+    }
+
+    <span class="kw">public void</span> <span class="fn">Deactivate</span>() { IsActive = <span class="kw">false</span>; <span class="fn">SetUpdated</span>(); }
+    <span class="kw">public void</span> <span class="fn">Activate</span>() { IsActive = <span class="kw">true</span>; <span class="fn">SetUpdated</span>(); }
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Factory Method Pattern</div>
+    <p>O construtor é <code>private</code> (exclusivo para EF Core). A criação passa pelo <code>Category.Create(...)</code>, garantindo que <strong>toda</strong> criação passa por validação. <code>sealed</code> impede herança e habilita devirtualization pelo JIT.</p>
+</div>
+
+<h4>Product.cs</h4>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Domain/Entities/Product.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Domain.Entities</span>;
+
+<span class="kw">public sealed class</span> <span class="tp">Product</span> : <span class="tp">AuditableEntity</span>
+{
+    <span class="kw">public string</span> Name { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">string</span>.Empty;
+    <span class="kw">public string</span>? Description { <span class="kw">get</span>; <span class="kw">private set</span>; }
+    <span class="kw">public string</span> Sku { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">string</span>.Empty;
+    <span class="kw">public decimal</span> Price { <span class="kw">get</span>; <span class="kw">private set</span>; }
+    <span class="kw">public int</span> StockQuantity { <span class="kw">get</span>; <span class="kw">private set</span>; }
+    <span class="kw">public bool</span> IsActive { <span class="kw">get</span>; <span class="kw">private set</span>; } = <span class="kw">true</span>;
+
+    <span class="kw">public</span> <span class="tp">Guid</span> CategoryId { <span class="kw">get</span>; <span class="kw">private set</span>; }
+    <span class="kw">public</span> <span class="tp">Category</span>? Category { <span class="kw">get</span>; <span class="kw">private set</span>; }
+
+    <span class="kw">private</span> <span class="fn">Product</span>() { } <span class="cm">// EF Core</span>
+
+    <span class="kw">public static</span> <span class="tp">Product</span> <span class="fn">Create</span>(
+        <span class="kw">string</span> name, <span class="kw">string</span> sku, <span class="kw">decimal</span> price,
+        <span class="kw">int</span> stockQuantity, <span class="tp">Guid</span> categoryId, <span class="kw">string</span>? description = <span class="kw">null</span>)
+    {
+        <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(name);
+        <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(sku);
+        <span class="kw">if</span> (price &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Price cannot be negative."</span>);
+        <span class="kw">if</span> (stockQuantity &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Stock cannot be negative."</span>);
+
+        <span class="kw">return new</span> <span class="tp">Product</span>
+        {
+            Id = <span class="tp">Guid</span>.<span class="fn">NewGuid</span>(), Name = name.<span class="fn">Trim</span>(),
+            Sku = sku.<span class="fn">Trim</span>().<span class="fn">ToUpperInvariant</span>(),
+            Price = price, StockQuantity = stockQuantity,
+            CategoryId = categoryId, Description = description?.<span class="fn">Trim</span>(),
+            CreatedAt = <span class="tp">DateTime</span>.UtcNow
+        };
+    }
+
+    <span class="kw">public void</span> <span class="fn">Update</span>(<span class="kw">string</span> name, <span class="kw">string</span>? desc, <span class="kw">decimal</span> price, <span class="kw">int</span> stock)
+    {
+        <span class="tp">ArgumentException</span>.<span class="fn">ThrowIfNullOrWhiteSpace</span>(name);
+        <span class="kw">if</span> (price &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Price cannot be negative."</span>);
+        <span class="kw">if</span> (stock &lt; <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Stock cannot be negative."</span>);
+        Name = name.<span class="fn">Trim</span>(); Description = desc?.<span class="fn">Trim</span>();
+        Price = price; StockQuantity = stock;
+        <span class="fn">SetUpdated</span>();
+    }
+
+    <span class="kw">public void</span> <span class="fn">ChangeCategory</span>(<span class="tp">Guid</span> newCategoryId) { <span class="cm">/* validates + sets */</span> <span class="fn">SetUpdated</span>(); }
+    <span class="kw">public void</span> <span class="fn">Deactivate</span>() { IsActive = <span class="kw">false</span>; <span class="fn">SetUpdated</span>(); }
+    <span class="kw">public void</span> <span class="fn">Activate</span>() { IsActive = <span class="kw">true</span>; <span class="fn">SetUpdated</span>(); }
+
+    <span class="kw">public bool</span> <span class="fn">HasSufficientStock</span>(<span class="kw">int</span> qty) =&gt; StockQuantity &gt;= qty;
+
+    <span class="kw">public void</span> <span class="fn">DecreaseStock</span>(<span class="kw">int</span> quantity)
+    {
+        <span class="kw">if</span> (!<span class="fn">HasSufficientStock</span>(quantity))
+            <span class="kw">throw new</span> <span class="tp">InvalidOperationException</span>(
+                $<span class="str">"Insufficient stock. Available: {StockQuantity}, Requested: {quantity}"</span>);
+        StockQuantity -= quantity;
+        <span class="fn">SetUpdated</span>();
+    }
+
+    <span class="kw">public void</span> <span class="fn">IncreaseStock</span>(<span class="kw">int</span> quantity)
+    {
+        <span class="kw">if</span> (quantity &lt;= <span class="num">0</span>) <span class="kw">throw new</span> <span class="tp">ArgumentException</span>(<span class="str">"Quantity must be positive."</span>);
+        StockQuantity += quantity;
+        <span class="fn">SetUpdated</span>();
+    }
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Lógica de Estoque no Domínio</div>
+    <p><code>DecreaseStock</code> e <code>IncreaseStock</code> vivem na <strong>entidade</strong>, não no service. Estoque é uma <strong>regra de invariante</strong> — "nunca pode ficar negativo". Colocando na entidade, é <strong>impossível violar a regra</strong> independente de quem chama.</p>
+    <p><strong>Command-Query Separation (CQS):</strong> <code>HasSufficientStock</code> apenas consulta (query), <code>DecreaseStock</code> apenas muda estado (command).</p>
+</div>
+
+<!-- ====== 4.3 Domain Interfaces ====== -->
+<h3>4.3 Catalog Domain — Interfaces de Repositório</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Domain/Interfaces/IProductRepository.cs</div>
+<pre><code><span class="kw">public interface</span> <span class="tp">IProductRepository</span> : <span class="tp">IRepository</span>&lt;<span class="tp">Product</span>&gt;
+{
+    <span class="tp">Task</span>&lt;<span class="tp">Product</span>?&gt; <span class="fn">GetBySkuAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Product</span>&gt;&gt; <span class="fn">GetByCategoryAsync</span>(<span class="tp">Guid</span> categoryId, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;(<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Product</span>&gt; Items, <span class="kw">int</span> TotalCount)&gt; <span class="fn">SearchAsync</span>(...);
+    <span class="tp">Task</span>&lt;<span class="kw">bool</span>&gt; <span class="fn">SkuExistsAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+}</code></pre>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Domain/Interfaces/ICategoryRepository.cs</div>
+<pre><code><span class="kw">public interface</span> <span class="tp">ICategoryRepository</span> : <span class="tp">IRepository</span>&lt;<span class="tp">Category</span>&gt;
+{
+    <span class="tp">Task</span>&lt;<span class="kw">bool</span>&gt; <span class="fn">NameExistsAsync</span>(<span class="kw">string</span> name, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Category</span>&gt;&gt; <span class="fn">GetActiveAsync</span>(<span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+}</code></pre>
+
+<!-- ====== 4.4 DTOs ====== -->
+<h3>4.4 Catalog Application — DTOs</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/DTOs/ProductDto.cs</div>
+<pre><code><span class="kw">public sealed record</span> <span class="tp">ProductDto</span>(
+    <span class="tp">Guid</span> Id, <span class="kw">string</span> Name, <span class="kw">string</span>? Description, <span class="kw">string</span> Sku,
+    <span class="kw">decimal</span> Price, <span class="kw">int</span> StockQuantity, <span class="kw">bool</span> IsActive,
+    <span class="tp">Guid</span> CategoryId, <span class="kw">string</span>? CategoryName,
+    <span class="tp">DateTime</span> CreatedAt, <span class="tp">DateTime</span>? UpdatedAt);
+
+<span class="kw">public sealed record</span> <span class="tp">CreateProductRequest</span>(
+    <span class="kw">string</span> Name, <span class="kw">string</span>? Description, <span class="kw">string</span> Sku,
+    <span class="kw">decimal</span> Price, <span class="kw">int</span> StockQuantity, <span class="tp">Guid</span> CategoryId);
+
+<span class="kw">public sealed record</span> <span class="tp">UpdateProductRequest</span>(
+    <span class="kw">string</span> Name, <span class="kw">string</span>? Description, <span class="kw">decimal</span> Price, <span class="kw">int</span> StockQuantity);
+
+<span class="kw">public sealed record</span> <span class="tp">ProductSearchRequest</span>(
+    <span class="kw">string</span>? SearchTerm = <span class="kw">null</span>, <span class="tp">Guid</span>? CategoryId = <span class="kw">null</span>,
+    <span class="kw">decimal</span>? MinPrice = <span class="kw">null</span>, <span class="kw">decimal</span>? MaxPrice = <span class="kw">null</span>,
+    <span class="kw">int</span> Page = <span class="num">1</span>, <span class="kw">int</span> PageSize = <span class="num">20</span>);</code></pre>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/DTOs/PagedResult.cs</div>
+<pre><code><span class="kw">public sealed record</span> <span class="tp">PagedResult</span>&lt;<span class="tp">T</span>&gt;(
+    <span class="tp">IReadOnlyList</span>&lt;<span class="tp">T</span>&gt; Items, <span class="kw">int</span> TotalCount, <span class="kw">int</span> Page, <span class="kw">int</span> PageSize)
+{
+    <span class="kw">public int</span> TotalPages =&gt; (<span class="kw">int</span>)<span class="tp">Math</span>.<span class="fn">Ceiling</span>((<span class="kw">double</span>)TotalCount / PageSize);
+    <span class="kw">public bool</span> HasPreviousPage =&gt; Page &gt; <span class="num">1</span>;
+    <span class="kw">public bool</span> HasNextPage =&gt; Page &lt; TotalPages;
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Records como DTOs — Imutabilidade por Design</div>
+    <p><strong>Separação de concerns:</strong> <code>ProductDto</code> = output (com <code>Id</code>, <code>CategoryName</code> computado). <code>CreateProductRequest</code> = input (sem <code>Id</code> — servidor gera). <code>UpdateProductRequest</code> = input parcial (sem <code>Sku</code> — imutável após criação). <code>PagedResult&lt;T&gt;</code> = record genérico com computed properties.</p>
+</div>
+
+<!-- ====== 4.5 Validators ====== -->
+<h3>4.5 Catalog Application — Validators</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/Validators/CreateProductValidator.cs</div>
+<pre><code><span class="kw">public sealed class</span> <span class="tp">CreateProductValidator</span> : <span class="tp">AbstractValidator</span>&lt;<span class="tp">CreateProductRequest</span>&gt;
+{
+    <span class="kw">public</span> <span class="fn">CreateProductValidator</span>()
+    {
+        <span class="fn">RuleFor</span>(x =&gt; x.Name)
+            .<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"Product name is required."</span>)
+            .<span class="fn">MaximumLength</span>(<span class="num">200</span>).<span class="fn">WithMessage</span>(<span class="str">"Name must not exceed 200 characters."</span>);
+
+        <span class="fn">RuleFor</span>(x =&gt; x.Sku)
+            .<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"SKU is required."</span>)
+            .<span class="fn">MaximumLength</span>(<span class="num">50</span>)
+            .<span class="fn">Matches</span>(<span class="str">@"^[A-Za-z0-9\-]+$"</span>)
+            .<span class="fn">WithMessage</span>(<span class="str">"SKU: only letters, numbers and hyphens."</span>);
+
+        <span class="fn">RuleFor</span>(x =&gt; x.Price)
+            .<span class="fn">GreaterThanOrEqualTo</span>(<span class="num">0</span>).<span class="fn">WithMessage</span>(<span class="str">"Price must be zero or positive."</span>);
+
+        <span class="fn">RuleFor</span>(x =&gt; x.StockQuantity)
+            .<span class="fn">GreaterThanOrEqualTo</span>(<span class="num">0</span>);
+
+        <span class="fn">RuleFor</span>(x =&gt; x.CategoryId).<span class="fn">NotEmpty</span>();
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Validação em Duas Camadas</div>
+    <p><strong>Nível 1 — FluentValidation (Application):</strong> Valida formato, limites, campos obrigatórios (regras "sintáticas"). Retorna <strong>todos</strong> os erros de uma vez.</p>
+    <p><strong>Nível 2 — Guard clauses (Entity):</strong> Valida invariantes de negócio (regras "semânticas"). Protege mesmo se a criação vier de um message broker.</p>
+    <p>A regex <code>^[A-Za-z0-9\-]+$</code> impede caracteres especiais que quebrariam URLs.</p>
+</div>
+
+<!-- ====== 4.6 Services ====== -->
+<h3>4.6 Catalog Application — Services</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/Services/ProductService.cs</div>
+<pre><code><span class="kw">public sealed class</span> <span class="tp">ProductService</span>(
+    <span class="tp">IProductRepository</span> productRepository,
+    <span class="tp">ICategoryRepository</span> categoryRepository,
+    <span class="tp">IUnitOfWork</span> unitOfWork,
+    <span class="tp">IValidator</span>&lt;<span class="tp">CreateProductRequest</span>&gt; createValidator,
+    <span class="tp">IValidator</span>&lt;<span class="tp">UpdateProductRequest</span>&gt; updateValidator,
+    <span class="tp">ILogger</span>&lt;<span class="tp">ProductService</span>&gt; logger) : <span class="tp">IProductService</span>
+{
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>&gt; <span class="fn">CreateAsync</span>(
+        <span class="tp">CreateProductRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="cm">// 1. Validate input (fail fast)</span>
+        <span class="kw">var</span> validation = <span class="kw">await</span> createValidator.<span class="fn">ValidateAsync</span>(request, ct);
+        <span class="kw">if</span> (!validation.IsValid)
+            <span class="kw">throw new</span> <span class="tp">ValidationException</span>(validation.Errors);
+
+        <span class="cm">// 2. Verify category exists</span>
+        <span class="kw">var</span> category = <span class="kw">await</span> categoryRepository.<span class="fn">GetByIdAsync</span>(request.CategoryId, ct)
+            ?? <span class="kw">throw new</span> <span class="tp">KeyNotFoundException</span>($<span class="str">"Category '{request.CategoryId}' not found."</span>);
+
+        <span class="cm">// 3. Check SKU uniqueness</span>
+        <span class="kw">if</span> (<span class="kw">await</span> productRepository.<span class="fn">SkuExistsAsync</span>(request.Sku, ct))
+            <span class="kw">throw new</span> <span class="tp">InvalidOperationException</span>($<span class="str">"SKU '{request.Sku}' already exists."</span>);
+
+        <span class="cm">// 4. Create domain entity</span>
+        <span class="kw">var</span> product = <span class="tp">Product</span>.<span class="fn">Create</span>(
+            request.Name, request.Sku, request.Price,
+            request.StockQuantity, request.CategoryId, request.Description);
+
+        <span class="cm">// 5. Persist (atomic via Unit of Work)</span>
+        <span class="kw">await</span> productRepository.<span class="fn">AddAsync</span>(product, ct);
+        <span class="kw">await</span> unitOfWork.<span class="fn">SaveChangesAsync</span>(ct);
+
+        <span class="cm">// 6. Structured logging</span>
+        logger.<span class="fn">LogInformation</span>(<span class="str">"Product created: {ProductId} - {ProductName}"</span>,
+            product.Id, product.Name);
+
+        <span class="kw">return</span> <span class="fn">MapToDto</span>(product);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">DeleteAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">var</span> product = <span class="kw">await</span> productRepository.<span class="fn">GetByIdAsync</span>(id, ct)
+            ?? <span class="kw">throw new</span> <span class="tp">KeyNotFoundException</span>(<span class="str">$"Product '{id}' not found."</span>);
+
+        product.<span class="fn">Deactivate</span>();           <span class="cm">// Soft delete!</span>
+        productRepository.<span class="fn">Update</span>(product);
+        <span class="kw">await</span> unitOfWork.<span class="fn">SaveChangesAsync</span>(ct);
+    }
+    <span class="cm">// ... GetByIdAsync, GetBySkuAsync, SearchAsync, UpdateAsync ...</span>
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Application Service — O Orquestrador</div>
+    <p><strong>ProductService não contém lógica de negócio</strong> — ele <strong>orquestra</strong>: valida input → busca entidades → chama métodos do domínio → persiste → retorna DTO.</p>
+    <p><strong>Primary constructor (C# 12)</strong> — parâmetros viram campos implícitos. <strong>Validate-first</strong> — falha rápido antes de qualquer I/O. <strong>Null-coalescing throw</strong> (<code>??</code>) verifica nulidade em uma linha.</p>
+    <p><strong>Soft delete</strong> — <code>DeleteAsync</code> chama <code>Deactivate()</code>, não <code>Remove()</code>. Combinado com <code>HasQueryFilter</code> do EF Core, o produto "desaparece" das queries mas permanece no banco.</p>
+</div>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Structured Logging — Não é interpolação!</div>
+    <p><code>logger.LogInformation("Product created: {ProductId}", product.Id)</code> — <code>{ProductId}</code> é um <strong>template Serilog</strong>. O valor é capturado como propriedade estruturada, permitindo filtrar no Seq: <code>ProductId = "abc-123"</code>. Se fosse <code>$"Product created: {product.Id}"</code>, o Seq veria apenas texto plano.</p>
+</div>
+
+<!-- ====== 4.7 Infrastructure ====== -->
+<h3>4.7 Catalog Infrastructure — DbContext e Configurações</h3>
+
+<div class="callout callout--analogy">
+    <div class="callout-title">🧠 Analogia — O Tradutor Simultâneo</div>
+    <p>O EF Core funciona como um <strong>tradutor</strong> entre C# e SQL. O <code>DbContext</code> é o <strong>escritório do tradutor</strong> — gerencia conexões, lembra o que mudou (change tracking), e garante que nada se perca (migrations). A <strong>Fluent API</strong> é como um dicionário de regras especiais: tamanho máximo, campos obrigatórios, relacionamentos.</p>
+</div>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Infrastructure/Data/CatalogDbContext.cs</div>
+<pre><code><span class="kw">public sealed class</span> <span class="tp">CatalogDbContext</span>(<span class="tp">DbContextOptions</span>&lt;<span class="tp">CatalogDbContext</span>&gt; options)
+    : <span class="tp">DbContext</span>(options), <span class="tp">IUnitOfWork</span>
+{
+    <span class="kw">public</span> <span class="tp">DbSet</span>&lt;<span class="tp">Product</span>&gt; Products =&gt; <span class="fn">Set</span>&lt;<span class="tp">Product</span>&gt;();
+    <span class="kw">public</span> <span class="tp">DbSet</span>&lt;<span class="tp">Category</span>&gt; Categories =&gt; <span class="fn">Set</span>&lt;<span class="tp">Category</span>&gt;();
+
+    <span class="kw">protected override void</span> <span class="fn">OnModelCreating</span>(<span class="tp">ModelBuilder</span> modelBuilder)
+    {
+        modelBuilder.<span class="fn">ApplyConfigurationsFromAssembly</span>(
+            <span class="kw">typeof</span>(<span class="tp">CatalogDbContext</span>).Assembly);
+
+        <span class="cm">// Global query filter: soft delete</span>
+        modelBuilder.<span class="fn">Entity</span>&lt;<span class="tp">Product</span>&gt;().<span class="fn">HasQueryFilter</span>(p =&gt; p.IsActive);
+        modelBuilder.<span class="fn">Entity</span>&lt;<span class="tp">Category</span>&gt;().<span class="fn">HasQueryFilter</span>(c =&gt; c.IsActive);
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 HasQueryFilter — Soft Delete Automático</div>
+    <p>Adiciona <code>WHERE IsActive = 1</code> em <strong>toda</strong> query EF Core. Produtos desativados ficam "invisíveis". Para admin ver desativados: <code>.IgnoreQueryFilters()</code>. Para verificar SKU incluindo inativos: <code>SkuExistsAsync</code> usa <code>IgnoreQueryFilters()</code> propositalmente.</p>
+</div>
+
+<h4>Fluent API — Configurações</h4>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Infrastructure/Data/Configurations/ProductConfiguration.cs</div>
+<pre><code><span class="kw">public sealed class</span> <span class="tp">ProductConfiguration</span> : <span class="tp">IEntityTypeConfiguration</span>&lt;<span class="tp">Product</span>&gt;
+{
+    <span class="kw">public void</span> <span class="fn">Configure</span>(<span class="tp">EntityTypeBuilder</span>&lt;<span class="tp">Product</span>&gt; builder)
+    {
+        builder.<span class="fn">ToTable</span>(<span class="str">"Products"</span>);
+        builder.<span class="fn">HasKey</span>(p =&gt; p.Id);
+
+        builder.<span class="fn">Property</span>(p =&gt; p.Name).<span class="fn">HasMaxLength</span>(<span class="num">200</span>).<span class="fn">IsRequired</span>();
+        builder.<span class="fn">Property</span>(p =&gt; p.Description).<span class="fn">HasMaxLength</span>(<span class="num">1000</span>);
+        builder.<span class="fn">Property</span>(p =&gt; p.Sku).<span class="fn">HasMaxLength</span>(<span class="num">50</span>).<span class="fn">IsRequired</span>();
+        builder.<span class="fn">Property</span>(p =&gt; p.Price).<span class="fn">HasPrecision</span>(<span class="num">18</span>, <span class="num">2</span>);
+
+        <span class="cm">// Índices</span>
+        builder.<span class="fn">HasIndex</span>(p =&gt; p.Sku).<span class="fn">IsUnique</span>();         <span class="cm">// Última linha de defesa</span>
+        builder.<span class="fn">HasIndex</span>(p =&gt; <span class="kw">new</span> { p.CategoryId, p.Name }); <span class="cm">// Composite</span>
+        builder.<span class="fn">HasIndex</span>(p =&gt; p.Price);                  <span class="cm">// Range queries</span>
+
+        <span class="cm">// Relacionamento</span>
+        builder.<span class="fn">HasOne</span>(p =&gt; p.Category)
+            .<span class="fn">WithMany</span>(c =&gt; c.Products)
+            .<span class="fn">HasForeignKey</span>(p =&gt; p.CategoryId)
+            .<span class="fn">OnDelete</span>(<span class="tp">DeleteBehavior</span>.Restrict);
+
+        builder.<span class="fn">Ignore</span>(p =&gt; p.DomainEvents);
+    }
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Fluent API vs Data Annotations</div>
+    <p>Toda configuração de banco está na Fluent API (Infrastructure), <strong>nunca em atributos na entidade</strong> (Domain). Atributos como <code>[MaxLength(200)]</code> no domínio criariam dependência da infraestrutura — violando a Regra de Dependência da Clean Architecture.</p>
+    <p><strong>decimal(18, 2)</strong> — para dinheiro, <strong>nunca use float ou double</strong>. <code>0.1 + 0.2 != 0.3</code> em floating point. <strong>Restrict</strong> impede deletar categoria com produtos — o mais seguro.</p>
+</div>
+
+<!-- ====== 4.8 Repositories ====== -->
+<h3>4.8 Catalog Infrastructure — Repositories</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Infrastructure/Data/Repositories/ProductRepository.cs</div>
+<pre><code><span class="kw">public sealed class</span> <span class="tp">ProductRepository</span>(<span class="tp">CatalogDbContext</span> context) : <span class="tp">IProductRepository</span>
+{
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">Product</span>?&gt; <span class="fn">GetByIdAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">return await</span> context.Products
+            .<span class="fn">Include</span>(p =&gt; p.Category)     <span class="cm">// JOIN no SQL</span>
+            .<span class="fn">FirstOrDefaultAsync</span>(p =&gt; p.Id == id, ct);
+    }
+    <span class="cm">// GetByIdAsync SEM AsNoTracking — intencional para write queries!</span>
+
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;(<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Product</span>&gt;, <span class="kw">int</span>)&gt; <span class="fn">SearchAsync</span>(
+        <span class="kw">string</span>? searchTerm, <span class="tp">Guid</span>? categoryId,
+        <span class="kw">decimal</span>? minPrice, <span class="kw">decimal</span>? maxPrice,
+        <span class="kw">int</span> page, <span class="kw">int</span> pageSize, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> query = context.Products
+            .<span class="fn">Include</span>(p =&gt; p.Category)
+            .<span class="fn">AsNoTracking</span>()      <span class="cm">// Read-only: economiza memória</span>
+            .<span class="fn">AsQueryable</span>();       <span class="cm">// Deferred execution</span>
+
+        <span class="cm">// Filtros condicionais — cada if adiciona WHERE</span>
+        <span class="kw">if</span> (!<span class="kw">string</span>.<span class="fn">IsNullOrWhiteSpace</span>(searchTerm))
+            query = query.<span class="fn">Where</span>(p =&gt;
+                p.Name.<span class="fn">Contains</span>(searchTerm) ||
+                p.Sku.<span class="fn">Contains</span>(searchTerm));
+        <span class="kw">if</span> (categoryId.<span class="fn">HasValue</span>)
+            query = query.<span class="fn">Where</span>(p =&gt; p.CategoryId == categoryId.Value);
+        <span class="kw">if</span> (minPrice.<span class="fn">HasValue</span>)
+            query = query.<span class="fn">Where</span>(p =&gt; p.Price &gt;= minPrice.Value);
+        <span class="kw">if</span> (maxPrice.<span class="fn">HasValue</span>)
+            query = query.<span class="fn">Where</span>(p =&gt; p.Price &lt;= maxPrice.Value);
+
+        <span class="kw">var</span> totalCount = <span class="kw">await</span> query.<span class="fn">CountAsync</span>(ct);
+        <span class="kw">var</span> items = <span class="kw">await</span> query
+            .<span class="fn">OrderBy</span>(p =&gt; p.Name)
+            .<span class="fn">Skip</span>((page - <span class="num">1</span>) * pageSize)  <span class="cm">// Paginação offset-based</span>
+            .<span class="fn">Take</span>(pageSize)
+            .<span class="fn">ToListAsync</span>(ct);             <span class="cm">// Aqui a query vai ao banco!</span>
+
+        <span class="kw">return</span> (items, totalCount);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="kw">bool</span>&gt; <span class="fn">SkuExistsAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">return await</span> context.Products
+            .<span class="fn">IgnoreQueryFilters</span>()  <span class="cm">// Inclui inativos!</span>
+            .<span class="fn">AnyAsync</span>(p =&gt; p.Sku == sku, ct);
+    }
+}</code></pre>
+
+<!-- ====== 4.9 DI Registration ====== -->
+<h3>4.9 Catalog Infrastructure — DI Registration</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Infrastructure/DependencyInjection.cs</div>
+<pre><code><span class="kw">public static class</span> <span class="tp">DependencyInjection</span>
+{
+    <span class="kw">public static</span> <span class="tp">IServiceCollection</span> <span class="fn">AddCatalogInfrastructure</span>(
+        <span class="kw">this</span> <span class="tp">IServiceCollection</span> services,
+        <span class="tp">IConfiguration</span> configuration)
+    {
+        <span class="cm">// EF Core com retry policy</span>
+        services.<span class="fn">AddDbContext</span>&lt;<span class="tp">CatalogDbContext</span>&gt;(options =&gt;
+            options.<span class="fn">UseSqlServer</span>(
+                configuration.<span class="fn">GetConnectionString</span>(<span class="str">"CatalogDb"</span>),
+                sql =&gt; {
+                    sql.<span class="fn">MigrationsAssembly</span>(<span class="kw">typeof</span>(<span class="tp">CatalogDbContext</span>).Assembly.FullName);
+                    sql.<span class="fn">EnableRetryOnFailure</span>(maxRetryCount: <span class="num">3</span>,
+                        maxRetryDelay: <span class="tp">TimeSpan</span>.<span class="fn">FromSeconds</span>(<span class="num">10</span>),
+                        errorNumbersToAdd: <span class="kw">null</span>);
+                }));
+
+        <span class="cm">// Unit of Work = mesma instância do DbContext</span>
+        services.<span class="fn">AddScoped</span>&lt;<span class="tp">IUnitOfWork</span>&gt;(sp =&gt;
+            sp.<span class="fn">GetRequiredService</span>&lt;<span class="tp">CatalogDbContext</span>&gt;());
+
+        services.<span class="fn">AddScoped</span>&lt;<span class="tp">IProductRepository</span>, <span class="tp">ProductRepository</span>&gt;();
+        services.<span class="fn">AddScoped</span>&lt;<span class="tp">ICategoryRepository</span>, <span class="tp">CategoryRepository</span>&gt;();
+        services.<span class="fn">AddScoped</span>&lt;<span class="tp">IProductService</span>, <span class="tp">ProductService</span>&gt;();
+        services.<span class="fn">AddScoped</span>&lt;<span class="tp">ICategoryService</span>, <span class="tp">CategoryService</span>&gt;();
+
+        <span class="cm">// Assembly scanning para validators</span>
+        services.<span class="fn">AddValidatorsFromAssemblyContaining</span>&lt;
+            <span class="tp">CreateProductValidator</span>&gt;();
+
+        <span class="kw">return</span> services;
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 DI Lifetimes — Por que tudo é Scoped?</div>
+    <table>
+        <thead><tr><th>Lifetime</th><th>Instância por...</th><th>Uso típico</th></tr></thead>
+        <tbody>
+            <tr><td><strong>Transient</strong></td><td>Cada injeção</td><td>Stateless, leve (validators)</td></tr>
+            <tr><td><strong>Scoped</strong></td><td>Request HTTP</td><td>DbContext, repos, services</td></tr>
+            <tr><td><strong>Singleton</strong></td><td>Aplicação inteira</td><td>Cache, HttpClient, config</td></tr>
+        </tbody>
+    </table>
+    <p><code>AddScoped&lt;IUnitOfWork&gt;(sp =&gt; sp.GetRequiredService&lt;CatalogDbContext&gt;())</code> — <strong>factory registration</strong>: <code>IUnitOfWork</code> e <code>CatalogDbContext</code> são a <strong>mesma instância</strong> no request.</p>
+</div>
+
+<!-- ====== 4.10 Controllers ====== -->
+<h3>4.10 Catalog API — Controllers</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Controllers/ProductsController.cs</div>
+<pre><code>[<span class="at">ApiController</span>]
+[<span class="at">Route</span>(<span class="str">"api/v1/[controller]"</span>)]
+[<span class="at">Produces</span>(<span class="str">"application/json"</span>)]
+<span class="kw">public sealed class</span> <span class="tp">ProductsController</span>(<span class="tp">IProductService</span> productService) : <span class="tp">ControllerBase</span>
+{
+    [<span class="at">HttpGet</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Search</span>(
+        [<span class="at">FromQuery</span>] <span class="tp">ProductSearchRequest</span> request, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> result = <span class="kw">await</span> productService.<span class="fn">SearchAsync</span>(request, ct);
+        <span class="kw">return</span> <span class="fn">Ok</span>(result);
+    }
+
+    [<span class="at">HttpGet</span>(<span class="str">"{id:guid}"</span>)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">GetById</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> product = <span class="kw">await</span> productService.<span class="fn">GetByIdAsync</span>(id, ct);
+        <span class="kw">return</span> product <span class="kw">is not null</span> ? <span class="fn">Ok</span>(product) : <span class="fn">NotFound</span>();
+    }
+
+    [<span class="at">HttpPost</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Create</span>(
+        [<span class="at">FromBody</span>] <span class="tp">CreateProductRequest</span> request, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> product = <span class="kw">await</span> productService.<span class="fn">CreateAsync</span>(request, ct);
+        <span class="kw">return</span> <span class="fn">CreatedAtAction</span>(<span class="kw">nameof</span>(<span class="fn">GetById</span>),
+            <span class="kw">new</span> { id = product.Id }, product);
+    }
+
+    [<span class="at">HttpPut</span>(<span class="str">"{id:guid}"</span>)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Update</span>(
+        <span class="tp">Guid</span> id, [<span class="at">FromBody</span>] <span class="tp">UpdateProductRequest</span> request, <span class="tp">CancellationToken</span> ct)
+        =&gt; <span class="fn">Ok</span>(<span class="kw">await</span> productService.<span class="fn">UpdateAsync</span>(id, request, ct));
+
+    [<span class="at">HttpDelete</span>(<span class="str">"{id:guid}"</span>)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Delete</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">await</span> productService.<span class="fn">DeleteAsync</span>(id, ct);
+        <span class="kw">return</span> <span class="fn">NoContent</span>();
+    }
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Controller Magro, Service Gordo</div>
+    <p>Controller não tem lógica — apenas roteia HTTP para Service. <code>[Route("api/v1/[controller]")]</code> — versionamento na URL. <code>{id:guid}</code> — route constraint rejeita IDs inválidos antes do código.</p>
+    <p><code>CreatedAtAction</code> retorna HTTP 201 com header <code>Location</code> — padrão REST. <code>CancellationToken</code> é injetado automaticamente pelo ASP.NET Core quando o client desconecta.</p>
+</div>
+
+<!-- ====== 4.11 Exception Handling ====== -->
+<h3>4.11 Catalog API — Global Exception Handler</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Middleware/GlobalExceptionHandler.cs</div>
+<pre><code><span class="kw">public sealed class</span> <span class="tp">GlobalExceptionHandler</span>(
+    <span class="tp">ILogger</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt; logger) : <span class="tp">IMiddleware</span>
+{
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">InvokeAsync</span>(<span class="tp">HttpContext</span> context, <span class="tp">RequestDelegate</span> next)
+    {
+        <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">next</span>(context); }
+        <span class="kw">catch</span> (<span class="tp">Exception</span> ex) { <span class="kw">await</span> <span class="fn">HandleExceptionAsync</span>(context, ex); }
+    }
+
+    <span class="kw">private async</span> <span class="tp">Task</span> <span class="fn">HandleExceptionAsync</span>(<span class="tp">HttpContext</span> ctx, <span class="tp">Exception</span> ex)
+    {
+        <span class="kw">var</span> (statusCode, errorResponse) = ex <span class="kw">switch</span>
+        {
+            <span class="tp">ValidationException</span> v =&gt;
+                (<span class="tp">HttpStatusCode</span>.BadRequest,
+                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Validation Error"</span>,
+                     v.Errors.<span class="fn">Select</span>(e =&gt; e.ErrorMessage).<span class="fn">ToArray</span>())),
+
+            <span class="tp">KeyNotFoundException</span> n =&gt;
+                (<span class="tp">HttpStatusCode</span>.NotFound,
+                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Not Found"</span>, [n.Message])),
+
+            <span class="tp">InvalidOperationException</span> i =&gt;
+                (<span class="tp">HttpStatusCode</span>.Conflict,
+                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Business Rule Violation"</span>, [i.Message])),
+
+            _ =&gt; (<span class="tp">HttpStatusCode</span>.InternalServerError,
+                  <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Internal Server Error"</span>,
+                      [<span class="str">"An unexpected error occurred."</span>]))
+        };
+
+        <span class="cm">// Erro 500 = LogError; Erro 4xx = LogWarning</span>
+        <span class="kw">if</span> (statusCode == <span class="tp">HttpStatusCode</span>.InternalServerError)
+            logger.<span class="fn">LogError</span>(ex, <span class="str">"Unhandled: {Message}"</span>, ex.Message);
+        <span class="kw">else</span>
+            logger.<span class="fn">LogWarning</span>(ex, <span class="str">"Handled: {StatusCode}"</span>, (<span class="kw">int</span>)statusCode);
+
+        ctx.Response.StatusCode = (<span class="kw">int</span>)statusCode;
+        ctx.Response.ContentType = <span class="str">"application/json"</span>;
+        <span class="kw">await</span> ctx.Response.<span class="fn">WriteAsJsonAsync</span>(errorResponse);
+    }
+}
+
+<span class="kw">public sealed record</span> <span class="tp">ErrorResponse</span>(<span class="kw">string</span> Title, <span class="kw">string</span>[] Errors);</code></pre>
+
+<div class="callout callout--danger">
+    <div class="callout-title">🔒 Segurança — Information Disclosure</div>
+    <p>Para erro 500, a mensagem é genérica: <code>"An unexpected error occurred."</code> — <strong>nunca exponha stack traces ao client</strong> (OWASP). O log completo vai para Serilog/Seq. Erros 4xx usam <code>LogWarning</code> (esperados), não <code>LogError</code> — evita alertas falsos.</p>
+</div>
+
+<!-- ====== 4.12 Program.cs ====== -->
+<h3>4.12 Catalog API — Program.cs</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Program.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Api.Middleware</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Infrastructure</span>;
+<span class="kw">using</span> <span class="tp">Serilog</span>;
+
+<span class="kw">var</span> builder = <span class="tp">WebApplication</span>.<span class="fn">CreateBuilder</span>(args);
+
+<span class="cm">// === Serilog (configurado primeiro para capturar erros de startup) ===</span>
+builder.Host.<span class="fn">UseSerilog</span>((context, loggerConfig) =&gt;
+{
+    loggerConfig
+        .<span class="fn">ReadFrom</span>.<span class="fn">Configuration</span>(context.Configuration)
+        .<span class="fn">Enrich</span>.<span class="fn">FromLogContext</span>()
+        .<span class="fn">Enrich</span>.<span class="fn">WithEnvironmentName</span>()
+        .<span class="fn">Enrich</span>.<span class="fn">WithThreadId</span>()
+        .<span class="fn">WriteTo</span>.<span class="fn">Console</span>(outputTemplate:
+            <span class="str">"[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"</span>)
+        .<span class="fn">WriteTo</span>.<span class="fn">Seq</span>(context.Configuration[<span class="str">"Seq:Url"</span>] ?? <span class="str">"http://localhost:5341"</span>);
+});
+
+<span class="cm">// === Services ===</span>
+builder.Services.<span class="fn">AddControllers</span>();
+builder.Services.<span class="fn">AddEndpointsApiExplorer</span>();
+builder.Services.<span class="fn">AddSwaggerGen</span>();
+builder.Services.<span class="fn">AddCatalogInfrastructure</span>(builder.Configuration);
+builder.Services.<span class="fn">AddTransient</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt;();
+
+<span class="cm">// === Health Checks ===</span>
+builder.Services.<span class="fn">AddHealthChecks</span>()
+    .<span class="fn">AddSqlServer</span>(
+        builder.Configuration.<span class="fn">GetConnectionString</span>(<span class="str">"CatalogDb"</span>)!,
+        name: <span class="str">"sqlserver"</span>, tags: [<span class="str">"db"</span>, <span class="str">"ready"</span>]);
+
+<span class="kw">var</span> app = builder.<span class="fn">Build</span>();
+
+<span class="cm">// === Middleware Pipeline ===</span>
+<span class="kw">if</span> (app.Environment.<span class="fn">IsDevelopment</span>())
+{
+    app.<span class="fn">UseSwagger</span>();
+    app.<span class="fn">UseSwaggerUI</span>();
+}
+
+app.<span class="fn">UseMiddleware</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt;();
+app.<span class="fn">UseSerilogRequestLogging</span>();
+app.<span class="fn">MapControllers</span>();
+
+<span class="cm">// Readiness: verifica SQL Server</span>
+app.<span class="fn">MapHealthChecks</span>(<span class="str">"/health/ready"</span>, <span class="kw">new</span>()
+{
+    Predicate = check =&gt; check.Tags.<span class="fn">Contains</span>(<span class="str">"ready"</span>)
+});
+
+<span class="cm">// Liveness: apenas verifica se o processo responde</span>
+app.<span class="fn">MapHealthChecks</span>(<span class="str">"/health/live"</span>, <span class="kw">new</span>()
+{
+    Predicate = _ =&gt; <span class="kw">false</span>
+});
+
+<span class="cm">// Auto-migrate apenas em Development</span>
+<span class="kw">if</span> (app.Environment.<span class="fn">IsDevelopment</span>())
+{
+    <span class="kw">using var</span> scope = app.Services.<span class="fn">CreateScope</span>();
+    <span class="kw">var</span> db = scope.ServiceProvider.<span class="fn">GetRequiredService</span>&lt;<span class="tp">CatalogDbContext</span>&gt;();
+    <span class="kw">await</span> db.Database.<span class="fn">MigrateAsync</span>();
+}
+
+app.<span class="fn">Run</span>();
+
+<span class="kw">public partial class</span> <span class="tp">Program</span>; <span class="cm">// WebApplicationFactory nos testes</span></code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Detalhes que Importam no Program.cs</div>
+    <p><strong>Ordem dos middlewares:</strong> Exception handler <strong>antes</strong> do Serilog request logging — exceções são convertidas em respostas HTTP antes de serem logadas.</p>
+    <p><strong>Health Checks:</strong> <code>/health/live</code> com <code>Predicate = _ =&gt; false</code> ignora todos os checks — apenas verifica se o processo responde. <code>/health/ready</code> verifica SQL Server.</p>
+    <p><strong>Auto-migrate apenas em Development.</strong> Em produção, migrations via CI/CD — nunca na startup (múltiplas instâncias migrando ao mesmo tempo = problema).</p>
+    <p><strong><code>public partial class Program;</code></strong> — permite <code>WebApplicationFactory&lt;Program&gt;</code> nos testes de integração.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============================================================ -->
+<!-- 5. TESTES                                                    -->
+<!-- ============================================================ -->
+<h2 id="testes"><span class="num">05.</span> Testes</h2>
+
+<table>
+    <thead><tr><th>Tipo</th><th>O que testa</th><th>Convenção de Nomes</th></tr></thead>
+    <tbody>
+        <tr><td><strong>Unit Test</strong></td><td>Lógica de domínio isolada</td><td rowspan="2"><code>Method_State_ExpectedBehavior</code></td></tr>
+        <tr><td><strong>Integration Test</strong></td><td>API completa com banco</td></tr>
+    </tbody>
+</table>
+
+<h3>WebApplicationFactory — Teste de Integração Real</h3>
+
+<div class="code-filepath">tests/OrderFlow.Catalog.Api.Tests/CustomWebApplicationFactory.cs</div>
+<pre><code><span class="kw">public class</span> <span class="tp">CustomWebApplicationFactory</span> : <span class="tp">WebApplicationFactory</span>&lt;<span class="tp">Program</span>&gt;
+{
+    <span class="kw">protected override void</span> <span class="fn">ConfigureWebHost</span>(<span class="tp">IWebHostBuilder</span> builder)
+    {
+        builder.<span class="fn">ConfigureServices</span>(services =&gt;
+        {
+            <span class="cm">// Remove SQL Server, adiciona InMemory</span>
+            <span class="kw">var</span> descriptor = services.<span class="fn">SingleOrDefault</span>(
+                d =&gt; d.ServiceType == <span class="kw">typeof</span>(<span class="tp">DbContextOptions</span>&lt;<span class="tp">CatalogDbContext</span>&gt;));
+            <span class="kw">if</span> (descriptor <span class="kw">is not null</span>) services.<span class="fn">Remove</span>(descriptor);
+
+            services.<span class="fn">AddDbContext</span>&lt;<span class="tp">CatalogDbContext</span>&gt;(options =&gt;
+                options.<span class="fn">UseInMemoryDatabase</span>(<span class="str">"CatalogTestDb_"</span> + <span class="tp">Guid</span>.<span class="fn">NewGuid</span>()));
+        });
+        builder.<span class="fn">UseEnvironment</span>(<span class="str">"Testing"</span>);
+    }
+}</code></pre>
+
+<h3>Exemplos de Testes</h3>
+
+<div class="code-filepath">tests/OrderFlow.Catalog.Api.Tests/ProductsControllerTests.cs</div>
+<pre><code><span class="kw">public class</span> <span class="tp">ProductsControllerTests</span>(<span class="tp">CustomWebApplicationFactory</span> factory)
+    : <span class="tp">IClassFixture</span>&lt;<span class="tp">CustomWebApplicationFactory</span>&gt;
+{
+    <span class="kw">private readonly</span> <span class="tp">HttpClient</span> _client = factory.<span class="fn">CreateClient</span>();
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_ValidProduct_ReturnsCreated</span>()
+    {
+        <span class="cm">// Arrange</span>
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateProductRequest</span>(
+            <span class="str">"Laptop Pro"</span>, <span class="str">"High-performance"</span>,
+            <span class="str">"LAPTOP-001"</span>, <span class="num">2999.99m</span>, <span class="num">10</span>, category.Id);
+
+        <span class="cm">// Act</span>
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/products"</span>, request);
+
+        <span class="cm">// Assert</span>
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
+        <span class="kw">var</span> product = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">ProductDto</span>&gt;();
+        product!.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"Laptop Pro"</span>);
+        product.Sku.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"LAPTOP-001"</span>);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Delete_ExistingProduct_SoftDeletes</span>()
+    {
+        <span class="cm">// Arrange: create product</span>
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> created = <span class="cm">/* create product */</span>;
+
+        <span class="cm">// Act: delete (soft)</span>
+        <span class="kw">var</span> response = <span class="kw">await</span> _client
+            .<span class="fn">DeleteAsync</span>($<span class="str">"/api/v1/products/{created.Id}"</span>);
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NoContent);
+
+        <span class="cm">// Assert: product disappears (query filter)</span>
+        <span class="kw">var</span> getResponse = <span class="kw">await</span> _client
+            .<span class="fn">GetAsync</span>($<span class="str">"/api/v1/products/{created.Id}"</span>);
+        getResponse.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NotFound);
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Padrão AAA e FluentAssertions</div>
+    <p><strong>Arrange-Act-Assert</strong> — cada teste segue essa estrutura. <strong>FluentAssertions</strong> (<code>.Should().Be()</code>) é mais legível que <code>Assert.Equal()</code> e gera mensagens de erro melhores.</p>
+    <p>O teste de soft delete verifica o <strong>fluxo completo</strong>: Controller → Service → Entity.Deactivate → SaveChanges → QueryFilter esconde.</p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============================================================ -->
+<!-- 6. CHECKPOINT                                                -->
+<!-- ============================================================ -->
+<h2 id="checkpoint"><span class="num">06.</span> Checkpoint</h2>
+
+<ul class="checklist">
+    <li><strong>Solution compila sem erros:</strong> <code>dotnet build</code></li>
+    <li><strong>Docker Compose sobe:</strong> <code>docker-compose -f docker/docker-compose.yml up -d</code></li>
+    <li><strong>SQL Server acessível</strong> na porta 1433</li>
+    <li><strong>Seq acessível</strong> em <code>http://localhost:5341</code></li>
+    <li><strong>Migrations rodam</strong></li>
+    <li><strong>API responde:</strong> <code>dotnet run --project src/Services/Catalog/OrderFlow.Catalog.Api</code></li>
+    <li><strong>Swagger acessível:</strong> <code>http://localhost:5002/swagger</code></li>
+    <li><strong>CRUD de Categories funciona</strong> via Swagger/Postman</li>
+    <li><strong>CRUD de Products funciona</strong> via Swagger/Postman</li>
+    <li><strong>Health checks respondem:</strong> <code>GET /health/live</code> → 200, <code>GET /health/ready</code> → 200</li>
+    <li><strong>Logs aparecem no Seq</strong></li>
+    <li><strong>Testes passam:</strong> <code>dotnet test</code></li>
+    <li><strong>Commit:</strong> <code>feat(catalog): implement Catalog API with CRUD, EF Core, and health checks</code></li>
+</ul>
+
+<h3>Erros Comuns Nesta Fase</h3>
+
+<table>
+    <thead><tr><th>#</th><th>Erro</th><th>Solução</th></tr></thead>
+    <tbody>
+        <tr><td>1</td><td><strong>Referência circular</strong> — Infrastructure referenciando Api</td><td>Revise a Dependency Rule: Domain ← Application ← Infrastructure ← Api</td></tr>
+        <tr><td>2</td><td><strong>Lógica no Controller</strong> — 30+ linhas de if/else</td><td>Se &gt;10 linhas, extraia para Application Service</td></tr>
+        <tr><td>3</td><td><strong>Esquecer CancellationToken</strong> em métodos async</td><td>Todo método async recebe e propaga <code>CancellationToken ct</code></td></tr>
+        <tr><td>4</td><td><strong>Versões diferentes</strong> sem Central Package Management</td><td>Use <code>Directory.Packages.props</code> desde o início</td></tr>
+        <tr><td>5</td><td><strong>Não testar SearchAsync</strong> com filtros combinados</td><td>Escreva testes com combinações de filtros</td></tr>
+        <tr><td>6</td><td><strong>Migration falha → dev apaga o banco</strong></td><td>Aprenda <code>dotnet ef migrations remove</code> e rollback manual</td></tr>
+    </tbody>
+</table>
+
+<h3>Troubleshooting</h3>
+
+<table>
+    <thead><tr><th>Sintoma</th><th>Causa Provável</th><th>Solução</th></tr></thead>
+    <tbody>
+        <tr><td>SA_PASSWORD rejeitada</td><td>Senha não atende complexidade</td><td>Use <code>OrderFlow@2026!</code></td></tr>
+        <tr><td>Porta 1433 em uso</td><td>Outro SQL Server rodando</td><td><code>netstat -ano | findstr 1433</code></td></tr>
+        <tr><td>Migration falha com "Login failed"</td><td>Container não está healthy</td><td><code>docker ps</code> — espere <code>(healthy)</code></td></tr>
+        <tr><td><code>dotnet ef</code> não encontrado</td><td>Global tool não instalada</td><td><code>dotnet tool install --global dotnet-ef</code></td></tr>
+    </tbody>
+</table>
+
+<div class="callout callout--warn">
+    <div class="callout-title">💡 Regra dos 3 Passos para Debugar</div>
+    <p>(1) <code>docker ps</code> — o container está rodando? (2) <code>docker compose logs &lt;serviço&gt;</code> — tem erro no log? (3) Verifique connection string no <code>appsettings.Development.json</code>. <strong>Em 90% dos casos, está em um desses três.</strong></p>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============================================================ -->
+<!-- 7. FAQ ENTREVISTAS                                           -->
+<!-- ============================================================ -->
+<h2 id="faq"><span class="num">07.</span> Perguntas de Entrevista — Fase 1</h2>
+
+<div class="faq-item">
+    <div class="faq-q">"O que é Clean Architecture e como difere de camadas tradicionais?"</div>
+    <div class="faq-a">Na arquitetura tradicional, a dependência flui de cima para baixo: Presentation → Business → Data. O problema: Business depende de Data. Na Clean Architecture, a dependência aponta para <strong>dentro</strong>: Api → Infrastructure → Application → Domain. O Domain é <strong>puro</strong> — zero dependências externas. Você pode trocar SQL Server por PostgreSQL sem alterar lógica de negócio.</div>
+</div>
+
+<div class="faq-item">
+    <div class="faq-q">"Por que Central Package Management e não versões no .csproj?"</div>
+    <div class="faq-a">Com 15+ projetos, gerenciar versões em cada <code>.csproj</code> vira pesadelo. O <code>Directory.Packages.props</code> centraliza <strong>todas</strong> as versões. Atualizar uma dependência = <strong>uma linha</strong>. É o equivalente ao Maven BOM ou <code>gradle.properties</code> no mundo Java.</div>
+</div>
+
+<div class="faq-item">
+    <div class="faq-q">"Diferença entre Controllers e Minimal APIs?"</div>
+    <div class="faq-a">Controllers: classes com rotas declarativas, filtros, model binding robusto, versionamento fácil. Minimal APIs: delegates lambda, menos cerimônia, mais performance, ideal para microserviços focados. Mostre que domina <strong>ambos</strong>.</div>
+</div>
+
+<div class="faq-item">
+    <div class="faq-q">"Explique EF Core Code First com Migrations."</div>
+    <div class="faq-a">Define entidades C# + Fluent API. O EF Core compara o modelo com o banco e gera uma migration (<code>Up()</code> e <code>Down()</code>). <code>dotnet ef database update</code> aplica. Schema versionado no Git, reproduzível em qualquer ambiente. <strong>Nunca edite migration já aplicada em produção</strong> — crie uma nova.</div>
+</div>
+
+<div class="faq-item">
+    <div class="faq-q">"Por que SQL Server e não PostgreSQL para .NET?"</div>
+    <div class="faq-a">SQL Server é o banco mais pedido nas vagas .NET no Brasil (bancos, fintechs, consultorias). EF Core suporta ambos igualmente. A escolha depende de custo (PostgreSQL é gratuito) e features específicas.</div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============================================================ -->
+<!-- 8. APROFUNDAMENTO SÊNIOR                                     -->
+<!-- ============================================================ -->
+<h2 id="senior"><span class="num">08.</span> Aprofundamento Sênior</h2>
+
+<h3>A1. Vertical Slice Architecture — Quando Substitui Clean</h3>
+
+<div class="diagram-container">
+    <svg viewBox="0 0 580 240" width="100%" style="max-width:560px;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Clean Architecture side -->
+        <text x="140" y="20" text-anchor="middle" fill="#38bdf8" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">CLEAN ARCHITECTURE</text>
+        <text x="140" y="38" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">Organiza por camada técnica</text>
+        <rect x="30" y="50" width="220" height="30" rx="4" fill="rgba(56, 189, 248, 0.1)" stroke="#38bdf8" stroke-width="1"/>
+        <text x="140" y="70" text-anchor="middle" fill="#38bdf8" font-family="JetBrains Mono, monospace" font-size="11">Domain/</text>
+        <rect x="30" y="85" width="220" height="30" rx="4" fill="rgba(167, 139, 250, 0.1)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="140" y="105" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono, monospace" font-size="11">Application/</text>
+        <rect x="30" y="120" width="220" height="30" rx="4" fill="rgba(52, 211, 153, 0.1)" stroke="#34d399" stroke-width="1"/>
+        <text x="140" y="140" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono, monospace" font-size="11">Infrastructure/</text>
+        <rect x="30" y="155" width="220" height="30" rx="4" fill="rgba(251, 191, 36, 0.1)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="140" y="175" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="11">Api/</text>
+
+        <!-- VS -->
+        <text x="290" y="120" text-anchor="middle" fill="#94a3b8" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="700">VS</text>
+
+        <!-- Vertical Slice side -->
+        <text x="440" y="20" text-anchor="middle" fill="#a78bfa" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700">VERTICAL SLICE</text>
+        <text x="440" y="38" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">Organiza por feature de negócio</text>
+        <rect x="330" y="50" width="100" height="135" rx="4" fill="rgba(56, 189, 248, 0.06)" stroke="#38bdf8" stroke-width="1"/>
+        <text x="380" y="72" text-anchor="middle" fill="#38bdf8" font-family="JetBrains Mono, monospace" font-size="9">CreateOrder/</text>
+        <text x="380" y="88" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8">Endpoint.cs</text>
+        <text x="380" y="102" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8">Handler.cs</text>
+        <text x="380" y="116" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8">Validator.cs</text>
+        <text x="380" y="130" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8">Request.cs</text>
+
+        <rect x="440" y="50" width="100" height="135" rx="4" fill="rgba(167, 139, 250, 0.06)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="490" y="72" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono, monospace" font-size="9">GetOrderById/</text>
+        <text x="490" y="88" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8">Endpoint.cs</text>
+        <text x="490" y="102" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8">Handler.cs</text>
+        <text x="490" y="116" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono, monospace" font-size="8">Dto.cs</text>
+
+        <!-- Labels -->
+        <text x="290" y="215" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">Clean = domínio rico · Vertical Slice = CRUD-heavy</text>
+    </svg>
+    <div class="diagram-caption">Clean Architecture vs Vertical Slice Architecture</div>
+</div>
+
+<p><strong>Quando usar Vertical Slice:</strong> Sistema CRUD-heavy, time grande com features paralelas, microserviço pequeno (&lt;30 endpoints).</p>
+<p><strong>Quando usar Clean:</strong> Domínio rico com invariantes complexas, múltiplas formas de invocação compartilhando lógica.</p>
+
+<h3>A2. EF Core 10 — Recursos Avançados</h3>
+
+<h4>Value Converters</h4>
+<pre><code>builder.<span class="fn">Property</span>(p =&gt; p.Sku)
+    .<span class="fn">HasConversion</span>(
+        sku =&gt; sku.Value,           <span class="cm">// Para o banco</span>
+        value =&gt; <span class="tp">Sku</span>.<span class="fn">Create</span>(value)); <span class="cm">// Do banco</span></code></pre>
+
+<h4>Owned Entities (Value Objects)</h4>
+<pre><code>builder.<span class="fn">OwnsOne</span>(p =&gt; p.Price, price =&gt;
+{
+    price.<span class="fn">Property</span>(m =&gt; m.Amount)
+         .<span class="fn">HasColumnName</span>(<span class="str">"PriceAmount"</span>).<span class="fn">HasPrecision</span>(<span class="num">18</span>, <span class="num">2</span>);
+    price.<span class="fn">Property</span>(m =&gt; m.Currency)
+         .<span class="fn">HasColumnName</span>(<span class="str">"PriceCurrency"</span>).<span class="fn">HasMaxLength</span>(<span class="num">3</span>);
+});</code></pre>
+
+<h4>Interceptors — Auditoria Automática</h4>
+<pre><code><span class="kw">public sealed class</span> <span class="tp">AuditInterceptor</span> : <span class="tp">SaveChangesInterceptor</span>
+{
+    <span class="kw">public override</span> <span class="tp">ValueTask</span>&lt;<span class="tp">InterceptionResult</span>&lt;<span class="kw">int</span>&gt;&gt; <span class="fn">SavingChangesAsync</span>(...)
+    {
+        <span class="kw">foreach</span> (<span class="kw">var</span> entry <span class="kw">in</span> eventData.Context!.ChangeTracker
+            .<span class="fn">Entries</span>&lt;<span class="tp">IAuditable</span>&gt;())
+        {
+            <span class="kw">if</span> (entry.State == <span class="tp">EntityState</span>.Added)
+                entry.Entity.CreatedAt = <span class="tp">DateTimeOffset</span>.UtcNow;
+            <span class="kw">if</span> (entry.State == <span class="tp">EntityState</span>.Modified)
+                entry.Entity.UpdatedAt = <span class="tp">DateTimeOffset</span>.UtcNow;
+        }
+        <span class="kw">return base</span>.<span class="fn">SavingChangesAsync</span>(eventData, result, ct);
+    }
+}</code></pre>
+
+<h3>A3. Concurrency Token (Optimistic Locking)</h3>
+<pre><code>builder.<span class="fn">Property</span>(p =&gt; p.RowVersion).<span class="fn">IsRowVersion</span>();
+<span class="cm">// Em conflito: EF lança DbUpdateConcurrencyException → retorne 409 Conflict</span></code></pre>
+
+<h3>A4. Database per Service — Disciplina Crítica</h3>
+
+<div class="callout callout--danger">
+    <div class="callout-title">🚫 Nunca compartilhar DB entre microserviços</div>
+    <p><strong>Sintomas de violação:</strong> Migration de um serviço quebra outro, performance degrada, schema vira monólito disfarçado.</p>
+    <p><strong>Solução:</strong> Para "preciso de dado de outro serviço" → <strong>eventos</strong> (Fase 05) ou <strong>API</strong> (gRPC, Fase 13). Nunca SQL cross-service.</p>
+</div>
+
+<h3>Perguntas Sênior de Entrevista</h3>
+
+<div class="faq-item">
+    <div class="faq-q">"Quando abandonaria Clean Architecture por Vertical Slice?"</div>
+    <div class="faq-a">Quando o sistema é CRUD-heavy, time é grande com features paralelas, e o overhead de 4 camadas + repositórios não paga ROI.</div>
+</div>
+
+<div class="faq-item">
+    <div class="faq-q">"Como evolui schema sem downtime?"</div>
+    <div class="faq-a">Padrão <strong>Expand → Migrate → Contract</strong>: (1) adicionar nova coluna nullable, (2) deploy app que escreve em ambas, (3) migrar dados em background, (4) deploy app que lê só da nova, (5) remover coluna antiga. Nunca faz <code>RENAME</code> ou <code>DROP</code> em colunas usadas.</div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ============================================================ -->
+<!-- CONNECTING THE DOTS                                          -->
+<!-- ============================================================ -->
+<h2><span class="num">09.</span> Conectando os Pontos</h2>
+
+<table>
+    <thead><tr><th>Artefato desta fase</th><th>Usado em</th><th>Como</th></tr></thead>
+    <tbody>
+        <tr><td><code>Entity</code>, <code>AuditableEntity</code></td><td><strong>Fase 02</strong> (DDD)</td><td><code>AggregateRoot</code> herda de <code>Entity</code></td></tr>
+        <tr><td><code>IDomainEvent</code></td><td><strong>Fase 02-03</strong></td><td>Ganha <code>: INotification</code> para MediatR</td></tr>
+        <tr><td><code>IRepository&lt;T&gt;</code></td><td><strong>Fase 02-03</strong></td><td>Orders implementa com aggregate persistence</td></tr>
+        <tr><td><code>Directory.Packages.props</code></td><td><strong>Todas</strong></td><td>Cada novo pacote é adicionado aqui</td></tr>
+        <tr><td>Docker Compose</td><td><strong>Fase 05-08</strong></td><td>Ganha RabbitMQ, Redis, Prometheus, Grafana</td></tr>
+        <tr><td>Health Checks</td><td><strong>Fase 06-07</strong></td><td>OpenTelemetry e YARP usam para routing</td></tr>
+        <tr><td>Serilog</td><td><strong>Fase 06</strong></td><td>Ganha enrichers, correlation ID</td></tr>
+    </tbody>
+</table>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🔮 Preview — Fase 02</div>
+    <p>Na próxima fase, o SharedKernel ganha <code>AggregateRoot</code> e <code>ValueObject</code> — as peças que faltam para modelar o domínio rico do Orders API. O <code>Product</code> simples desta fase será contrastado com o <code>Order</code> rico: invariantes, state machine, domain events. A diferença vai mostrar <em>quando</em> Clean Architecture + DDD vale a pena — e quando é overengineering.</p>
+</div>
+
+</article>
+</div>
+
+<!-- ============================================================ -->
+<!-- FOOTER                                                       -->
+<!-- ============================================================ -->
+<footer>
+    <p>OrderFlow — Fase 01: Fundação e Estrutura &middot; .NET 10 &middot; Clean Architecture &middot; EF Core &middot; Serilog</p>
+    <p style="margin-top:0.3rem; opacity: 0.6;">Gerado com tema Tech Dark &middot; Conteúdo didático para engenheiros .NET</p>
+</footer>
+
+</body>
+</html>

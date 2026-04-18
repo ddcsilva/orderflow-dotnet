@@ -493,6 +493,43 @@ public abstract class Entity
 }
 ```
 
+> 🏛️ **Nota Arquitetural — Por que uma classe base `Entity`?**
+>
+> **Decisão:** Toda entidade do sistema herda de `Entity`, centralizando identidade (`Id`) e domain events.
+>
+> **Alternativas consideradas:**
+> - *Interface `IEntity`* — mais flexível para herança múltipla, mas perde a implementação compartilhada de `Equals`, `GetHashCode` e domain events. Cada entidade reimplementaria esse código.
+> - *Sem classe base* — cada entidade define seu próprio `Id`. Funciona para sistemas pequenos, mas gera inconsistência em microserviços (qual o tipo do Id? `int`? `Guid`? `string`?).
+> - *Generic `Entity<TId>`* — permite `Entity<int>`, `Entity<string>`, etc. Mais flexível, mas adiciona complexidade genérica em toda a codebase. Para o OrderFlow, `Guid` como identidade universal é suficiente.
+>
+> **Trade-off aceito:** Acoplamento a `Guid` como tipo de Id em troca de simplicidade e consistência cross-service.
+
+> 🔬 **Nota de Engenharia — Dissecando o código linha a linha**
+>
+> ```csharp
+> public abstract class Entity
+> ```
+> `abstract` impede instanciação direta — você nunca cria `new Entity()`, apenas entidades concretas como `Product` ou `Order`. Isso é o **Template Method Pattern**: a classe base define o "esqueleto" (identidade, igualdade, eventos), e as filhas preenchem os detalhes.
+>
+> ```csharp
+> public Guid Id { get; protected init; }
+> ```
+> **`protected init`** é a combinação perfeita aqui: `init` permite atribuir o valor apenas durante a inicialização do objeto (factory method ou object initializer), e `protected` garante que somente a própria classe e suas filhas podem setar — código externo nunca altera o Id. Isso é **imutabilidade seletiva**: protege contra alteração acidental sem impedir a criação.
+>
+> ```csharp
+> private readonly List<IDomainEvent> _domainEvents = [];
+> public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
+> ```
+> **Estrutura de dados:** Internamente é um `List<T>` (array dinâmico, O(1) para `Add`, O(n) para `Contains`). Externamente, é exposto como `IReadOnlyCollection<T>` — o consumidor pode iterar e contar, mas **não pode adicionar, remover ou limpar**. Isso é o **princípio do menor privilégio** aplicado a coleções. O `[]` é a **collection expression** do C# 12 — equivale a `new List<IDomainEvent>()` mas mais idiomático.
+>
+> ```csharp
+> if (Id == Guid.Empty || other.Id == Guid.Empty)
+>     return false;
+> ```
+> **Guarda essencial:** Entidades com `Guid.Empty` (não persistidas ainda) nunca são iguais — mesmo que ambas tenham Id zero. Sem isso, dois objetos novos seriam considerados iguais antes de terem identidade, o que quebraria lógica em coleções como `HashSet<Entity>`.
+>
+> **Padrão aplicado:** **Identity Equality** (DDD) — entidades são iguais pelo **Id**, não pelos campos. Dois `Product` com mesmo nome/preço mas Ids diferentes são produtos diferentes. Isso contrasta com **Value Objects**, onde igualdade é por valor (dois `Money(100, "BRL")` são iguais).
+
 **`src/BuildingBlocks/OrderFlow.SharedKernel/IDomainEvent.cs`**
 
 ```csharp
@@ -503,6 +540,12 @@ public interface IDomainEvent
     DateTime OccurredOn { get; }
 }
 ```
+
+> 🔬 **Nota de Engenharia — Interface mínima, poder máximo**
+>
+> Esta interface tem **uma única propriedade**. Isso é intencional — é o **Interface Segregation Principle (ISP)** do SOLID na prática. A interface define *o contrato mínimo* que todo evento de domínio deve cumprir: "quando aconteceu?". Metadata adicional (quem causou, correlation id) será adicionada por enrichers, não pela interface. Se amanhã precisar de `EventId` ou `CausedBy`, é melhor criar `IDomainEventEnvelope` do que poluir a interface base — isso evita recompilação de todos os eventos existentes.
+>
+> **Por que `DateTime` e não `DateTimeOffset`?** Em sistemas distribuídos, `DateTimeOffset` preserva timezone. Para o OrderFlow (que usa `DateTime.UtcNow` consistentemente), `DateTime` em UTC é suficiente e mais leve. Se o sistema tivesse múltiplos fusos horários como input, `DateTimeOffset` seria a escolha correta.
 
 > **Por que não herdar de `MediatR.INotification` agora?**
 >
@@ -531,6 +574,18 @@ public abstract class AuditableEntity : Entity
 }
 ```
 
+> 🔬 **Nota de Engenharia — Herança proposital**
+>
+> `AuditableEntity : Entity` adiciona **apenas** auditoria temporal. Nem toda entidade precisa de `CreatedAt`/`UpdatedAt` — por isso a separação. Na Fase 02, `Order` herdará de `Entity` diretamente (via `AggregateRoot`), enquanto `Product` aqui herda de `AuditableEntity`.
+>
+> ```csharp
+> public DateTime CreatedAt { get; protected init; }  // Setado uma vez, nunca muda
+> public DateTime? UpdatedAt { get; protected set; }   // Null = nunca atualizado
+> ```
+> **`protected init` vs `protected set`:** `CreatedAt` é imutável após criação (a data de criação nunca muda), por isso `init`. `UpdatedAt` muda a cada operação, por isso `set`. O `?` (nullable) indica que pode ser null — um objeto recém-criado nunca foi atualizado.
+>
+> 🏛️ **Decisão arquitetural:** Auditoria no domínio vs interceptor. Aqui, `SetUpdated()` é chamado explicitamente nos métodos de mutação. Alternativa: usar um `SaveChangesInterceptor` do EF Core que detecta `Modified` entries automaticamente (mostrado no Aprofundamento Sênior). O trade-off: explícito é mais visível e testável; interceptor é menos verboso mas "mágico".
+
 **`src/BuildingBlocks/OrderFlow.SharedKernel/IRepository.cs`**
 
 ```csharp
@@ -546,6 +601,20 @@ public interface IRepository<T> where T : Entity
 }
 ```
 
+> 🏛️ **Nota Arquitetural — Repository genérico: herói ou vilão?**
+>
+> **Decisão:** Um `IRepository<T>` genérico define operações CRUD comuns. Repositórios específicos (`IProductRepository`) herdam dele e adicionam queries de domínio.
+>
+> **O debate:** Muitos arquitetos criticam repositórios genéricos porque expõem operações que nem toda entidade deveria ter (ex: `Remove` em entidades que usam soft delete). A alternativa é **não ter** genérico e definir apenas as operações relevantes em cada repositório.
+>
+> **Por que usamos aqui:** No Catalog, todas as entidades compartilham CRUD. O genérico elimina boilerplate. Se uma entidade específica não deveria ter `Remove`, a implementação pode lançar `NotSupportedException` — mas isso viola o Liskov Substitution Principle. Uma abordagem mais limpa seria interfaces menores: `IReadRepository<T>`, `IWriteRepository<T>`.
+>
+> **Constraint `where T : Entity`:** Garante que somente classes que herdam de `Entity` podem ser repositórios. Isso é **type safety em nível de design** — impossível criar `IRepository<string>`.
+>
+> 🔬 **Engenharia — Sync vs Async nos métodos:**
+> - `AddAsync` é async porque EF Core pode gerar o Id via banco (sequences). Para Guid local, seria síncrono, mas a interface prevê outros bancos.
+> - `Update` e `Remove` são **síncronos** — EF Core apenas marca a entidade como `Modified`/`Deleted` no change tracker. A operação real no banco acontece no `SaveChangesAsync`.
+
 **`src/BuildingBlocks/OrderFlow.SharedKernel/IUnitOfWork.cs`**
 
 ```csharp
@@ -556,6 +625,14 @@ public interface IUnitOfWork
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 ```
+
+> 🏛️ **Nota Arquitetural — Unit of Work: quem controla a transação?**
+>
+> **O padrão:** Unit of Work agrupa múltiplas operações de repositório em uma única transação. Em vez de cada repositório fazer `SaveChanges`, o **service** coordena: "add Product, update Category, depois salva tudo atomicamente".
+>
+> **Por que interface e não classe concreta?** A Application Layer precisa chamar `SaveChangesAsync` mas **não deve conhecer** EF Core. A interface permite que o domínio/aplicação orquestre transações sem depender da infraestrutura. Na prática, `CatalogDbContext` implementa `IUnitOfWork` — o `SaveChangesAsync` do DbContext **já é** um Unit of Work nativo.
+>
+> **Retorno `Task<int>`:** O `int` indica quantas linhas foram afetadas no banco. Útil para assertions em testes: `var affected = await uow.SaveChangesAsync(); affected.Should().Be(1);`
 
 ### 4.2 Catalog Domain — Entities
 
@@ -613,7 +690,36 @@ public sealed class Category : AuditableEntity
 }
 ```
 
-**`src/Services/Catalog/OrderFlow.Catalog.Domain/Entities/Product.cs`**
+> 🏛️ **Nota Arquitetural — Factory Method: por que não usar `new Category()`?**
+>
+> **Decisão:** O construtor é `private Category() { }` e a criação passa pelo **static factory method** `Category.Create(...)`.
+>
+> **Raciocínio:** O construtor parameterless existe exclusivamente para o EF Core materializar objetos do banco. Ele nunca deve ser chamado no código de negócio. O factory method garante que **toda** criação passa por validação (`ThrowIfNullOrWhiteSpace`). Se o construtor fosse público, seria possível criar `new Category()` com `Name = ""` — uma entidade inválida.
+>
+> **Alternativa:** Construtor com parâmetros obrigatórios — funciona, mas factory methods são mais expressivos (`Category.Create` comunica intenção melhor que `new Category`) e permitem retornar `Result<Category>` no futuro sem quebrar a API.
+>
+> 🔬 **Nota de Engenharia — Padrões aplicados linha a linha:**
+>
+> ```csharp
+> public sealed class Category : AuditableEntity
+> ```
+> **`sealed`** impede herança. Regra pragmática: sele todas as classes a menos que você **projete** para extensão. Isso permite ao JIT otimizar chamadas virtuais (devirtualization) e comunica: "esta classe é um ponto final".
+>
+> ```csharp
+> public string Name { get; private set; } = string.Empty;
+> ```
+> **`private set`** permite mutação apenas de dentro da classe. O `= string.Empty` é o **null safety pattern** — evita `NullReferenceException` sem usar nullable reference (`string?`). Propriedade que **deve** ter valor usa `string`; que **pode** ser vazia usa `string?` (como `Description`).
+>
+> ```csharp
+> private readonly List<Product> _products = [];
+> public IReadOnlyCollection<Product> Products => _products.AsReadOnly();
+> ```
+> **Encapsulamento de coleção** — mesmo padrão da `Entity.DomainEvents`. A coleção de produtos é manipulada internamente pelo EF Core (que popula via reflection) e exposta como somente-leitura. **Nunca exponha `List<T>` diretamente** — qualquer consumidor poderia chamar `.Add()` ou `.Clear()` sem passar pelas regras de negócio.
+>
+> ```csharp
+> ArgumentException.ThrowIfNullOrWhiteSpace(name);
+> ```
+> **Guard clause** do .NET 8+ — substitui `if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException(...)`. Mais conciso e padronizado. Lança `ArgumentException` automaticamente com o nome do parâmetro. Prefira sempre os métodos `ThrowIf*` nativos.
 
 ```csharp
 using OrderFlow.SharedKernel;
@@ -721,6 +827,44 @@ public sealed class Product : AuditableEntity
 }
 ```
 
+> 🏛️ **Nota Arquitetural — Lógica de estoque: domínio vs serviço?**
+>
+> **Decisão:** `DecreaseStock` e `IncreaseStock` vivem na **entidade**, não no service.
+>
+> **Por que no domínio:** Estoque é uma **regra de invariante** — "nunca pode ficar negativo". Se essa validação estivesse no `ProductService`, outro service (ex: `OrderService` na Fase 02) poderia esquecer de validar e gerar estoque negativo. Colocando na entidade, **é impossível violar a regra** independente de quem chama.
+>
+> **Trade-off:** Entidades com muita lógica podem ficar pesadas (God Object). A regra pragmática: se a operação modifica **apenas campos da própria entidade**, pertence à entidade. Se coordena **múltiplas entidades** ou **serviços externos**, pertence ao Application Service ou Domain Service.
+>
+> 🔬 **Nota de Engenharia — Anatomia da entidade mais rica**
+>
+> ```csharp
+> public string Sku { get; private set; } = string.Empty;
+> ```
+> SKU (Stock Keeping Unit) é um identificador de negócio. Diferente do `Id` (identidade técnica), o SKU vem do mundo real. Ter ambos é comum em DDD: `Id` para o banco, `SKU` para o usuário.
+>
+> ```csharp
+> public Guid CategoryId { get; private set; }
+> public Category? Category { get; private set; }
+> ```
+> **Duas propriedades para uma relação** — isso é o padrão EF Core para **foreign key + navigation property**. `CategoryId` é o FK (Guid, sempre preenchido). `Category?` é o navigation property (nullable porque pode não ser carregado via `Include`). **Nunca confunda nullable do navigation com nullable da relação** — a relação é obrigatória, mas o EF Core pode não ter carregado o objeto.
+>
+> ```csharp
+> Sku = sku.Trim().ToUpperInvariant(),
+> ```
+> **Normalização no ponto de entrada** — SKUs são case-insensitive no negócio (ABC-001 = abc-001). `ToUpperInvariant()` garante consistência no banco. `Trim()` remove espaços acidentais. Isso evita bugs de comparação e duplicatas.
+>
+> ```csharp
+> public bool HasSufficientStock(int quantity) => StockQuantity >= quantity;
+> ```
+> **Query method puro** — não muda estado, apenas consulta. Separar a verificação (`Has*`) da ação (`Decrease*`) segue o **Command-Query Separation (CQS)**: métodos ou retornam dados ou mudam estado, nunca ambos. O service pode chamar `HasSufficientStock` para exibir UI antes de tentar `DecreaseStock`.
+>
+> ```csharp
+> if (!HasSufficientStock(quantity))
+>     throw new InvalidOperationException(...);
+> StockQuantity -= quantity;
+> ```
+> **Guard clause + operação atômica.** Em cenários de concorrência (dois pedidos simultâneos), essa validação em memória **não é suficiente** — precisaria de concurrency token ou lock pessimista no banco. Isso será abordado na Fase 03 com `RowVersion`.
+
 ### 4.3 Catalog Domain — Interfaces
 
 **`src/Services/Catalog/OrderFlow.Catalog.Domain/Interfaces/IProductRepository.cs`**
@@ -747,6 +891,15 @@ public interface IProductRepository : IRepository<Product>
 }
 ```
 
+> 🔬 **Nota de Engenharia — Retorno por Tupla vs DTO dedicado**
+>
+> ```csharp
+> Task<(IReadOnlyList<Product> Items, int TotalCount)> SearchAsync(...)
+> ```
+> O retorno é uma **tupla nomeada** `(Items, TotalCount)`. Alternativa seria um `SearchResult<T>` dedicado. Tupla é boa para retornos de 2-3 campos; acima disso, crie um tipo. Tuplas nomeadas são valores (struct), sem alocação no heap — microscopicamente mais eficiente.
+>
+> **`CancellationToken ct = default`** aparece em **todo método async**. Isso permite que o caller cancele a operação (ex: usuário fecha a aba do browser → controller propaga cancelamento → repository aborta a query). O `= default` é conveniência — se não passar, usa `CancellationToken.None`.
+
 **`src/Services/Catalog/OrderFlow.Catalog.Domain/Interfaces/ICategoryRepository.cs`**
 
 ```csharp
@@ -761,6 +914,12 @@ public interface ICategoryRepository : IRepository<Category>
     Task<IReadOnlyList<Category>> GetActiveAsync(CancellationToken ct = default);
 }
 ```
+
+> 🏛️ **Nota Arquitetural — Repositórios específicos: projetando para o domínio**
+>
+> Compare `IProductRepository` (5 métodos extras) com `ICategoryRepository` (2 métodos). O repositório reflete a **complexidade do domínio** — produtos têm busca paginada, filtro por preço, lookup por SKU. Categorias são mais simples.
+>
+> **Regra de design:** O repositório específico vive na **Domain Layer** porque define queries que o domínio precisa. A implementação vive na **Infrastructure Layer** porque usa EF Core. Isso é a **Regra de Dependência** da Clean Architecture: domínio define o contrato, infraestrutura implementa.
 
 ### 4.4 Catalog Application — DTOs
 
@@ -805,7 +964,23 @@ public sealed record ProductSearchRequest(
     int PageSize = 20);
 ```
 
-**`src/Services/Catalog/OrderFlow.Catalog.Application/DTOs/CategoryDto.cs`**
+> 🏛️ **Nota Arquitetural — Records como DTOs: imutabilidade por design**
+>
+> **Decisão:** Todos os DTOs são `sealed record` (não `class`).
+>
+> **Por que record?** Records são **imutáveis por padrão** — após criação, os campos não mudam. Isso é perfeito para DTOs que fluem da API para o Service e vice-versa. Records geram automaticamente: `Equals`, `GetHashCode`, `ToString`, desconstrução, e `with` expressions. Isso elimina boilerplate e evita bugs de igualdade.
+>
+> **Separação de concerns nos DTOs:**
+> - `ProductDto` = **output** (inclui `Id`, `CreatedAt`, campo computado `CategoryName`)
+> - `CreateProductRequest` = **input** (sem `Id` — o servidor gera; sem `IsActive` — sempre começa ativo)
+> - `UpdateProductRequest` = **input parcial** (sem `Sku` — SKU é imutável após criação; sem `CategoryId` — usa `ChangeCategory` separado)
+> - `ProductSearchRequest` = **query params** (todos opcionais com `= null`/defaults, para binding via `[FromQuery]`)
+>
+> 🔬 **Engenharia — Positional record syntax:**
+> ```csharp
+> public sealed record ProductDto(Guid Id, string Name, ...);
+> ```
+> Essa é a **positional syntax** — o compilador gera um construtor, propriedades `init`, e desconstrução. É equivalente a escrever ~30 linhas de classe com propriedades. O `sealed` nos records impede herança e habilita otimizações do compilador.
 
 ```csharp
 namespace OrderFlow.Catalog.Application.DTOs;
@@ -845,6 +1020,20 @@ public sealed record PagedResult<T>(
 }
 ```
 
+> 🔬 **Nota de Engenharia — Generic record com computed properties**
+>
+> ```csharp
+> public sealed record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize)
+> ```
+> `PagedResult<T>` é um **record genérico** — funciona com `ProductDto`, `CategoryDto`, ou qualquer tipo. O `T` é resolvido em compile-time, sem boxing ou reflection.
+>
+> ```csharp
+> public int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+> ```
+> **Computed property (expression-bodied)** — recalculada a cada acesso. O cast `(double)` é necessário porque divisão inteira trunca: `7 / 3 = 2`, mas `7.0 / 3 = 2.33`, e `Ceiling(2.33) = 3`. Sem o cast, uma página ficaria faltando.
+>
+> **Por que `IReadOnlyList<T>` e não `IEnumerable<T>`?** `IReadOnlyList` garante acesso por índice (`Items[0]`) e `Count` sem materializar. `IEnumerable` permitiria lazy evaluation — perigoso em DTOs serializados para JSON, pois a query ao banco poderia já ter sido fechada (connection disposed).
+
 ### 4.5 Catalog Application — Validators
 
 **`src/Services/Catalog/OrderFlow.Catalog.Application/Validators/CreateProductValidator.cs`**
@@ -880,7 +1069,24 @@ public sealed class CreateProductValidator : AbstractValidator<CreateProductRequ
 }
 ```
 
-**`src/Services/Catalog/OrderFlow.Catalog.Application/Validators/CreateCategoryValidator.cs`**
+> 🏛️ **Nota Arquitetural — Validação em camadas: onde validar?**
+>
+> O OrderFlow valida em **dois níveis**:
+> 1. **FluentValidation na Application Layer** — valida formato, limites, campos obrigatórios (regras "sintáticas")
+> 2. **Guard clauses na Entity** — valida invariantes de negócio (regras "semânticas")
+>
+> **Por que dois níveis?** O Validator verifica *input do usuário* antes de chegar à entidade. A entidade valida suas *invariantes* independente da origem. Se amanhã a criação vier de um message broker (não de um controller), a entidade ainda se protege.
+>
+> **Alternativa:** Validação só na entidade — funciona, mas perde mensagens de erro amigáveis e coleção de erros (FluentValidation retorna **todos** os erros de uma vez; exceptions retornam um por vez).
+>
+> 🔬 **Engenharia — FluentValidation fluent API:**
+> ```csharp
+> RuleFor(x => x.Sku)
+>     .NotEmpty()
+>     .MaximumLength(50)
+>     .Matches(@"^[A-Za-z0-9\-]+$")
+> ```
+> **Encadeamento fluente (builder pattern)** — cada método retorna o builder, permitindo chamadas em cadeia. A **regex** `^[A-Za-z0-9\-]+$` valida: `^` início, `[A-Za-z0-9\-]+` um ou mais caracteres alfanuméricos ou hífen, `$` fim. Isso impede caracteres especiais que quebrariam URLs (`/api/products/sku/ABC-001`).
 
 ```csharp
 using FluentValidation;
@@ -903,6 +1109,12 @@ public sealed class CreateCategoryValidator : AbstractValidator<CreateCategoryRe
 }
 ```
 
+> 🔬 **Engenharia — Validação condicional:**
+> ```csharp
+> .When(x => x.Description is not null)
+> ```
+> O `.When()` aplica a regra **somente** se a condição for verdadeira. Sem ele, `MaximumLength` falharia em `null` (ou validaria desnecessariamente). O `is not null` é **pattern matching** do C# — equivale a `!= null` mas mais idiomático e null-safe.
+
 ### 4.6 Catalog Application — Services
 
 **`src/Services/Catalog/OrderFlow.Catalog.Application/Interfaces/IProductService.cs`**
@@ -923,7 +1135,16 @@ public interface IProductService
 }
 ```
 
-**`src/Services/Catalog/OrderFlow.Catalog.Application/Interfaces/ICategoryService.cs`**
+> 🏛️ **Nota Arquitetural — Service Interface: a fronteira da Application Layer**
+>
+> **Decisão:** Controllers dependem de `IProductService`, nunca de `ProductService` diretamente.
+>
+> **Por quê?** Três razões:
+> 1. **Testabilidade** — testes do controller usam mock de `IProductService`, sem precisar de banco real
+> 2. **Inversão de dependência** — a API Layer depende de uma abstração (interface), não da implementação
+> 3. **Substituibilidade** — pode trocar para `CachedProductService` (decorator) sem alterar controllers
+>
+> **Retornos `Task<ProductDto?>` vs `Task<ProductDto>`:** Nullable (`?`) em Gets indica "pode não existir". Non-nullable em Create/Update indica "sempre retorna" — se falhar, lança exception. Esse contrato comunica sem documentação extra.
 
 ```csharp
 using OrderFlow.Catalog.Application.DTOs;
@@ -1068,7 +1289,54 @@ public sealed class ProductService(
 }
 ```
 
-### 4.7 Catalog Infrastructure — EF Core
+> 🏛️ **Nota Arquitetural — Application Service: o orquestrador**
+>
+> **Papel do ProductService:** Não contém lógica de negócio — ele **orquestra**: valida input → busca entidades → chama métodos do domínio → persiste → retorna DTO. Se a lógica de estoque estiver aqui em vez da entidade, é sinal de **Anemic Domain Model** (anti-pattern).
+>
+> **Decisão — Exceptions como controle de fluxo:**
+> O service lança `KeyNotFoundException`, `ValidationException`, `InvalidOperationException` que são capturadas pelo `GlobalExceptionHandler`. Alternativa: **Result Pattern** (`Result<ProductDto>`, `Result.Failure("not found")`), que evita exceptions para fluxos esperados (não encontrado não é "excepcional"). O OrderFlow evolui para Result Pattern na Fase 05.
+>
+> 🔬 **Nota de Engenharia — Dissecando o fluxo do `CreateAsync`**
+>
+> ```csharp
+> public sealed class ProductService(
+>     IProductRepository productRepository,
+>     ICategoryRepository categoryRepository,
+>     IUnitOfWork unitOfWork,
+>     IValidator<CreateProductRequest> createValidator,
+>     ...
+> ) : IProductService
+> ```
+> **Primary constructor (C# 12)** — os parâmetros do construtor viram campos implícitos da classe. Equivale a 6 campos `private readonly` + construtor com assignments. Mais conciso sem perder funcionalidade. Cada parâmetro é injetado pelo DI container.
+>
+> ```csharp
+> var validation = await createValidator.ValidateAsync(request, ct);
+> if (!validation.IsValid) throw new ValidationException(validation.Errors);
+> ```
+> **Validate-first** — falha rápido antes de qualquer I/O (banco). Se o request é inválido, nem busca a categoria. Isso segue o princípio **fail fast**: quanto antes falhar, menos recurso desperdiça.
+>
+> ```csharp
+> var category = await categoryRepository.GetByIdAsync(request.CategoryId, ct)
+>     ?? throw new KeyNotFoundException(...);
+> ```
+> **Null-coalescing throw** — o `??` verifica nulidade e lança em uma linha. Sem isso, seriam 3 linhas (if/null/throw). Verifica existência da categoria **antes** de criar o produto — integridade referencial no nível da aplicação.
+>
+> ```csharp
+> await productRepository.AddAsync(product, ct);
+> await unitOfWork.SaveChangesAsync(ct);
+> ```
+> **Duas operações, uma transação** — `AddAsync` marca no change tracker, `SaveChangesAsync` persiste. Se `SaveChanges` falhar (ex: unique constraint no SKU), nada é salvo. Isso é a **atomicidade** do Unit of Work.
+>
+> ```csharp
+> logger.LogInformation("Product created: {ProductId} - {ProductName}", product.Id, product.Name);
+> ```
+> **Structured logging** — `{ProductId}` não é interpolação de string! É um **template Serilog**. O valor é capturado como propriedade estruturada, permitindo filtrar no Seq: `ProductId = "abc-123"`. Se fosse `$"Product created: {product.Id}"`, o Seq veria apenas texto plano.
+>
+> ```csharp
+> product.Deactivate();           // NÃO context.Products.Remove(product)
+> productRepository.Update(product);  // marca como Modified, não Deleted
+> ```
+> **Soft delete** — o `DeleteAsync` não deleta nada! Chama `Deactivate()` (seta `IsActive = false`) e salva. Combinado com o `HasQueryFilter` do EF Core, o produto "desaparece" das queries normais mas permanece no banco para auditoria e relatórios.
 
 > 🧠 **Analogia — O Tradutor Simultâneo:** O EF Core funciona como um **tradutor** entre duas línguas: C# e SQL. Você escreve `context.Products.Where(p => p.Price > 100)` em C# e ele traduz para `SELECT * FROM Products WHERE Price > 100` em SQL. O `DbContext` é o **escritório do tradutor** — ele gerencia as conversas (conexões), lembra o que já foi dito (change tracking) e garante que nada se perca na tradução (migrations). A **Fluent API** é como um dicionário de regras especiais: "esse campo tem no máximo 200 caracteres", "esse é obrigatório", "esses dois estão relacionados".
 
@@ -1098,7 +1366,24 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
 }
 ```
 
-> 💡 **O que é Global Query Filter e por que usar?** O `HasQueryFilter` adiciona automaticamente um `WHERE IsActive = 1` em **toda** query EF Core para essa entidade. Assim, produtos desativados ficam "invisíveis" sem que cada query precise lembrar de filtrar. 
+> 🏛️ **Nota Arquitetural — DbContext como Unit of Work nativo**
+>
+> ```csharp
+> public sealed class CatalogDbContext(...) : DbContext(options), IUnitOfWork
+> ```
+> **Decisão:** O DbContext implementa `IUnitOfWork`. Isso evita criar uma classe wrapper separada, porque o `SaveChangesAsync` do EF Core **já é** transacional — ou salva tudo ou nada.
+>
+> **Alternativa:** Uma classe `UnitOfWork` que envolve o DbContext e expõe repositórios como propriedades (`uow.Products.Add(...)`, `uow.Commit()`). Mais explícito mas mais boilerplate. Para o Catalog, a abordagem direta é suficiente.
+>
+> ```csharp
+> public DbSet<Product> Products => Set<Product>();
+> ```
+> **Expression-bodied property** que retorna `Set<Product>()`. Diferente de `{ get; set; }` — não há backing field. Cada acesso chama `Set<T>()`, que retorna o DbSet do cache interno. Isso é equivalente a `public DbSet<Product> Products { get; set; } = null!;` mas sem o setter público.
+>
+> ```csharp
+> modelBuilder.ApplyConfigurationsFromAssembly(typeof(CatalogDbContext).Assembly);
+> ```
+> **Convention over Configuration** — busca automaticamente todas as classes que implementam `IEntityTypeConfiguration<T>` no assembly. Assim, adicionar uma nova entidade requer apenas criar a classe de configuração, sem alterar o DbContext. Isso é o **Open/Closed Principle**: aberto para extensão (nova config), fechado para modificação (DbContext). O `HasQueryFilter` adiciona automaticamente um `WHERE IsActive = 1` em **toda** query EF Core para essa entidade. Assim, produtos desativados ficam "invisíveis" sem que cada query precise lembrar de filtrar. 
 >
 > **Três cuidados importantes:**
 > 1. **Admin precisa ver desativados?** Use `.IgnoreQueryFilters()` em queries específicas de administração
@@ -1154,7 +1439,38 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 }
 ```
 
-**`src/Services/Catalog/OrderFlow.Catalog.Infrastructure/Data/Configurations/CategoryConfiguration.cs`**
+> 🏛️ **Nota Arquitetural — Fluent API vs Data Annotations**
+>
+> **Decisão:** Toda configuração de banco está na Fluent API (arquivos `*Configuration.cs`), não em atributos na entidade (`[MaxLength(200)]`, `[Required]`).
+>
+> **Por quê?** Atributos no domínio criariam dependência do `System.ComponentModel.DataAnnotations` (infraestrutura) na Domain Layer — viola a Regra de Dependência da Clean Architecture. A Fluent API mantém configuração de banco **onde ela pertence**: na Infrastructure.
+>
+> 🔬 **Nota de Engenharia — Índices e suas estratégias**
+>
+> ```csharp
+> builder.HasIndex(p => p.Sku).IsUnique();
+> ```
+> **Unique index** — o banco garante unicidade do SKU. Mesmo que o application service verifique `SkuExistsAsync` antes, race conditions podem permitir duplicatas simultâneas. O unique index é a **última linha de defesa** — se dois requests passarem pela validação juntos, o segundo falha no banco com `DbUpdateException`.
+>
+> ```csharp
+> builder.HasIndex(p => new { p.CategoryId, p.Name });
+> ```
+> **Composite index** — otimiza queries que filtram por `CategoryId` **e** `Name` simultaneamente. A ordem importa: `CategoryId` primeiro porque é mais seletivo (filtra uma categoria), `Name` depois (filtra dentro dela). Essa é a query mais comum: "produtos da categoria X cujo nome contém Y".
+>
+> ```csharp
+> builder.HasIndex(p => p.Price);
+> ```
+> **Single column index** — otimiza range queries (`WHERE Price >= 100 AND Price <= 500`). Sem esse índice, o banco faria table scan.
+>
+> ```csharp
+> builder.Property(p => p.Price).HasPrecision(18, 2);
+> ```
+> **`decimal(18, 2)`** — 18 dígitos no total, 2 após a vírgula. Para dinheiro, **nunca use `float` ou `double`** — eles causam erros de arredondamento. `0.1 + 0.2 != 0.3` em floating point, mas funciona corretamente com `decimal`.
+>
+> ```csharp
+> .OnDelete(DeleteBehavior.Restrict);
+> ```
+> **Restrict** impede deletar uma categoria que tem produtos. Alternativas: `Cascade` (deleta produtos junto — perigoso), `SetNull` (orphan products — inconsistente). `Restrict` é o mais seguro: força o usuário a mover/deletar produtos antes de remover a categoria.
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
@@ -1185,6 +1501,12 @@ public sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
     }
 }
 ```
+
+> 🔬 **Engenharia — Unique index no nome da categoria:**
+> ```csharp
+> builder.HasIndex(c => c.Name).IsUnique();
+> ```
+> Garante que não existam duas categorias com o mesmo nome. Compare com o Product, que tem unique no **SKU** mas não no **Name** (dois produtos podem ter o mesmo nome, desde que SKUs diferentes). Essas decisões refletem **regras de negócio**: categorias são identificadas pelo nome, produtos pelo SKU.
 
 ### 4.8 Catalog Infrastructure — Repositories
 
@@ -1298,6 +1620,47 @@ public sealed class ProductRepository(CatalogDbContext context) : IProductReposi
 }
 ```
 
+> 🏛️ **Nota Arquitetural — Repository como adaptador**
+>
+> Na Clean Architecture, o repository é um **Adapter** (padrão Ports & Adapters): a interface (port) está no Domain, a implementação (adapter) está na Infrastructure. Se amanhã trocar EF Core por Dapper para queries de leitura, **apenas esta classe muda** — domínio e application ficam intactos.
+>
+> 🔬 **Nota de Engenharia — EF Core query patterns linha a linha**
+>
+> ```csharp
+> return await context.Products
+>     .Include(p => p.Category)
+>     .FirstOrDefaultAsync(p => p.Id == id, ct);
+> ```
+> **`Include` = JOIN no SQL.** Sem ele, `product.Category` seria `null` (lazy loading está desabilitado por padrão no EF Core). `FirstOrDefaultAsync` retorna o primeiro match ou `null` — traduzido para `SELECT TOP 1 ... WHERE Id = @id`.
+>
+> **`GetByIdAsync` sem `AsNoTracking`** — intencional! Queries de escrita (Get → Update → Save) precisam do change tracker ativo para detectar mudanças. Queries de leitura (`GetAllAsync`, `SearchAsync`) usam `AsNoTracking` porque não vão modificar os objetos — economiza memória e CPU.
+>
+> ```csharp
+> var query = context.Products
+>     .Include(p => p.Category)
+>     .AsNoTracking()
+>     .AsQueryable();
+> ```
+> **Query composicional** — o `IQueryable` é como um **SQL builder**. Cada `.Where()` adiciona condição mas **não executa**. A query real vai ao banco apenas no `ToListAsync()` ou `CountAsync()`. Isso é **deferred execution** — permite compor filtros dinamicamente sem múltiplas queries.
+>
+> ```csharp
+> if (!string.IsNullOrWhiteSpace(searchTerm))
+>     query = query.Where(p => p.Name.Contains(searchTerm) || p.Sku.Contains(searchTerm));
+> ```
+> **Filtro condicional** — o `if` adiciona `WHERE` apenas se o parâmetro foi fornecido. No SQL gerado, isso vira `WHERE Name LIKE '%termo%' OR Sku LIKE '%termo%'`. **Cuidado com performance:** `Contains` gera `LIKE '%...%'` que **não usa índice** (full table scan). Para busca textual eficiente, considere Full-Text Search do SQL Server (Fase 05).
+>
+> ```csharp
+> .Skip((page - 1) * pageSize)
+> .Take(pageSize)
+> ```
+> **Paginação offset-based** — simples de implementar mas com trade-off: páginas altas são lentas (`OFFSET 10000` ainda precisa "pular" 10000 rows). Para datasets enormes, **keyset pagination** (`WHERE Id > @lastId ORDER BY Id TAKE 20`) é mais eficiente. Para o Catalog com ~milhares de produtos, offset é adequado.
+>
+> ```csharp
+> .IgnoreQueryFilters()
+> .AnyAsync(p => p.Sku == sku, ct);
+> ```
+> **`IgnoreQueryFilters()`** aqui é proposital — ao verificar se um SKU existe, precisa checar **inclusive produtos inativos**. Se não ignorasse, um produto desativado com SKU "ABC-001" ficaria invisível, e a criação de outro "ABC-001" passaria na validação mas falharia no unique index do banco.
+
 ### 4.9 Catalog Infrastructure — DI Registration
 
 **`src/Services/Catalog/OrderFlow.Catalog.Infrastructure/DependencyInjection.cs`**
@@ -1353,6 +1716,41 @@ public static class DependencyInjection
     }
 }
 ```
+
+> 🏛️ **Nota Arquitetural — Composition Root: onde tudo se conecta**
+>
+> Este arquivo é o **Composition Root** do microserviço — o único lugar que conhece **todas as camadas**. Ele registra quem implementa o quê. O `Program.cs` chama `AddCatalogInfrastructure()` e pronto — não precisa saber de `ProductRepository` ou `CatalogDbContext`.
+>
+> **Por que extension method em `IServiceCollection`?** Encapsula toda a configuração do módulo em um método fluente. Se o Catalog crescer, pode dividir em `AddCatalogRepositories()`, `AddCatalogServices()`, etc.
+>
+> 🔬 **Nota de Engenharia — Lifetimes e suas implicações**
+>
+> ```csharp
+> services.AddDbContext<CatalogDbContext>(...)  // Scoped por padrão
+> services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CatalogDbContext>());
+> services.AddScoped<IProductRepository, ProductRepository>();
+> services.AddScoped<IProductService, ProductService>();
+> ```
+>
+> **Tudo é `Scoped`** — uma instância por request HTTP. Isso é crucial:
+> - **DbContext Scoped** = todos os repositórios e services de um request compartilham o **mesmo** DbContext. Sem isso, `productRepository.Add()` e `unitOfWork.SaveChanges()` usariam contextos diferentes e nada seria salvo.
+> - **`AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CatalogDbContext>())`** — factory registration. Em vez de criar novo `IUnitOfWork`, pega o **mesmo `CatalogDbContext`** já registrado. Assim, `IUnitOfWork` e `CatalogDbContext` são a mesma instância no request.
+>
+> | Lifetime | Instância por... | Uso típico |
+> |---|---|---|
+> | **Transient** | Cada injeção | Stateless, leve (validators) |
+> | **Scoped** | Request HTTP | DbContext, repos, services |
+> | **Singleton** | Aplicação inteira | Cache, HttpClient, configuração |
+>
+> ```csharp
+> sqlOptions.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(10), ...)
+> ```
+> **Resiliência built-in** — se o SQL Server estiver temporariamente indisponível (reinício, failover), o EF Core tenta novamente até 3x com backoff. Sem isso, uma query falharia imediatamente em transient errors.
+>
+> ```csharp
+> services.AddValidatorsFromAssemblyContaining<CreateProductValidator>();
+> ```
+> **Assembly scanning** — FluentValidation encontra automaticamente todos os validators no assembly. Assim como `ApplyConfigurationsFromAssembly` do EF Core, segue o Open/Closed Principle.
 
 ### 4.10 Catalog API — Controllers
 
@@ -1451,7 +1849,35 @@ public sealed class ProductsController(IProductService productService) : Control
 }
 ```
 
-**`src/Services/Catalog/OrderFlow.Catalog.Api/Controllers/CategoriesController.cs`**
+> 🏛️ **Nota Arquitetural — Controller magro, Service gordo**
+>
+> **Decisão:** O controller não tem lógica — apenas roteia HTTP para Service e retorna status codes. Toda lógica vive no `ProductService`.
+>
+> **Por quê?** Controllers testáveis via unit test são possíveis, mas frágeis (dependem de `ControllerBase`, `HttpContext`). Services são POCO (Plain Old C# Objects) — fáceis de testar sem infraestrutura web. Se migrar de controller-based para Minimal APIs, apenas a camada de roteamento muda.
+>
+> 🔬 **Nota de Engenharia — REST conventions e binding**
+>
+> ```csharp
+> [Route("api/v1/[controller]")]
+> ```
+> **Versionamento na URL** — `v1` permite que `v2` coexista sem quebrar clientes existentes. `[controller]` substitui pelo nome da classe sem "Controller": `ProductsController` → `api/v1/products`.
+>
+> ```csharp
+> [HttpGet("{id:guid}")]
+> public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+> ```
+> **Route constraint `{id:guid}`** — rejeita requests com Id não-Guid antes de chegar ao method. `GET /api/v1/products/abc` retorna 404 sem executar código. O `CancellationToken ct` é injetado automaticamente pelo ASP.NET Core quando o client desconecta — propaga cancelamento pela stack inteira.
+>
+> ```csharp
+> return CreatedAtAction(nameof(GetById), new { id = product.Id }, product);
+> ```
+> **HTTP 201 Created** com header `Location: /api/v1/products/{id}` — padrão REST para criação. O client sabe onde buscar o recurso criado. `nameof(GetById)` é compile-time safe — se renomear o método, o compilador avisa.
+>
+> ```csharp
+> [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
+> [ProducesResponseType(StatusCodes.Status404NotFound)]
+> ```
+> **Metadata para Swagger** — essas annotations geram a documentação OpenAPI automaticamente, mostrando quais status codes e tipos de resposta cada endpoint retorna.
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
@@ -1515,6 +1941,8 @@ public sealed class CategoriesController(ICategoryService categoryService) : Con
     }
 }
 ```
+
+> 🔬 **Engenharia — Controllers "espelhos":** Note como `CategoriesController` segue a **mesma estrutura** do `ProductsController` — mesmos verbos HTTP, mesmos patterns de retorno. Isso é consistência de API: o consumidor que aprendeu a usar Products já sabe usar Categories. APIs previsíveis reduzem a curva de aprendizado.
 
 ### 4.11 Catalog API — Global Exception Handling Middleware
 
@@ -1593,6 +2021,34 @@ public sealed class GlobalExceptionHandler(
 
 public sealed record ErrorResponse(string Title, string[] Errors);
 ```
+
+> 🏛️ **Nota Arquitetural — Middleware vs Exception Filter**
+>
+> **Decisão:** Tratamento global de exceções via `IMiddleware`, não via `IExceptionFilter` do MVC.
+>
+> **Diferença:** Middleware intercepta **qualquer** exceção no pipeline HTTP (inclusive de outros middlewares). Exception Filter intercepta apenas exceções de controllers/actions. Para uma API que pode ter exceções em autenticação, rate limiting, ou custom middleware, o middleware é mais abrangente.
+>
+> **Alternativa moderna (.NET 8+):** `IExceptionHandler` com `app.UseExceptionHandler()` — funciona como middleware mas com API mais limpa e suporte a `ProblemDetails` nativo. O OrderFlow evolui para isso na Fase 05.
+>
+> 🔬 **Nota de Engenharia — Pattern matching com switch expression**
+>
+> ```csharp
+> var (statusCode, errorResponse) = exception switch
+> {
+>     ValidationException validationEx => (HttpStatusCode.BadRequest, ...),
+>     KeyNotFoundException notFoundEx => (HttpStatusCode.NotFound, ...),
+>     InvalidOperationException => (HttpStatusCode.Conflict, ...),
+>     _ => (HttpStatusCode.InternalServerError, ...)
+> };
+> ```
+> **Switch expression + desconstrução de tupla** — o C# resolve o tipo da exception e retorna status code + resposta em uma expressão. O `_` é o **discard pattern** (catch-all). A ordem importa: tipos mais específicos primeiro, genéricos depois.
+>
+> **Segurança importante:** Para `InternalServerError`, a mensagem genérica `"An unexpected error occurred."` **esconde detalhes internos**. Nunca exponha stack traces ou mensagens internas ao client — isso é information disclosure (OWASP). O log completo vai para o Serilog/Seq para debugging.
+>
+> ```csharp
+> logger.LogError(exception, "Unhandled exception: {Message}", exception.Message);
+> ```
+> Apenas erros 500 usam `LogError`. Erros 4xx usam `LogWarning` — eles são **esperados** (input inválido, recurso não encontrado). Isso evita alertas falsos no monitoramento.
 
 ### 4.12 Catalog API — Program.cs
 
@@ -1688,6 +2144,48 @@ app.Run();
 public partial class Program;
 ```
 
+> 🏛️ **Nota Arquitetural — O Program.cs como mapa da aplicação**
+>
+> O `Program.cs` é lido **de cima para baixo** e conta a história completa do serviço:
+> 1. **Logging** (Serilog) — configurado primeiro para capturar erros de startup
+> 2. **Services** (DI) — registra tudo que a aplicação precisa
+> 3. **Middleware pipeline** — ordem importa! Exception handler antes do Serilog request logging
+> 4. **Endpoints** (MapControllers, MapHealthChecks) — rotas HTTP
+> 5. **Inicialização** (auto-migrate) — configuração de runtime
+>
+> **Decisão — Auto-migrate apenas em Development:** `MigrateAsync()` aplica migrations pendentes automaticamente. Em produção, migrations devem ser aplicadas via CI/CD pipeline ou ferramenta dedicada — nunca na startup, pois pode causar downtime em deploys com múltiplas instâncias (duas instâncias tentando migrar ao mesmo tempo).
+>
+> 🔬 **Nota de Engenharia — Detalhes que importam**
+>
+> ```csharp
+> builder.Host.UseSerilog((context, loggerConfig) => { ... });
+> ```
+> **Two-stage initialization** do Serilog — captura logs desde o início do startup, incluindo erros de configuração do EF Core ou DI. Se usasse `Log.Logger = ...` depois do `Build()`, perderia logs do bootstrap.
+>
+> ```csharp
+> builder.Services.AddTransient<GlobalExceptionHandler>();
+> ```
+> **Transient, não Scoped** — middlewares que implementam `IMiddleware` são resolvidos do DI a cada request. `Transient` garante que não há estado compartilhado entre requests. Se fosse `Singleton`, um `ILogger<T>` injetado poderia ter problemas com scoped services.
+>
+> ```csharp
+> app.UseMiddleware<GlobalExceptionHandler>();
+> app.UseSerilogRequestLogging();
+> ```
+> **Ordem dos middlewares** — o exception handler **antes** do request logging significa que exceções são capturadas e convertidas em respostas HTTP **antes** do Serilog logar o request. Assim, o log mostra `200 OK` ou `400 Bad Request`, não `500` para erros de validação.
+>
+> ```csharp
+> app.MapHealthChecks("/health/live", new()
+> {
+>     Predicate = _ => false
+> });
+> ```
+> **Liveness check vazio** — `Predicate = _ => false` ignora **todos** os health checks registrados. O endpoint apenas verifica se o processo responde HTTP. Se o processo estiver vivo, retorna 200. Kubernetes usa isso para decidir se reinicia o container.
+>
+> ```csharp
+> public partial class Program;
+> ```
+> **`partial class`** permite que `WebApplicationFactory<Program>` nos testes de integração acesse o entry point. Sem isso, a classe `Program` gerada pelo top-level statements seria `internal` e inacessível de outros projetos.
+
 ### 4.13 Catalog API — appsettings.json
 
 ```json
@@ -1711,6 +2209,12 @@ public partial class Program;
   "AllowedHosts": "*"
 }
 ```
+
+> 🔬 **Nota de Engenharia — Configuração por ambiente**
+>
+> **`Serilog.MinimumLevel.Override`:** Reduz verbosidade de logs internos. `Microsoft.AspNetCore: Warning` suprime logs como "Request starting HTTP/1.1 GET /api/..." (que são `Information`). Sem isso, cada request geraria 3-4 linhas de log do framework, poluindo a saída. Logs do **seu código** continuam em `Information`.
+>
+> **`TrustServerCertificate=true`:** Aceita certificados auto-assinados. **Apenas para desenvolvimento!** Em produção, configure certificados TLS válidos. Sem essa flag, a conexão falha porque o SQL Server em Docker usa certificado self-signed.
 
 ---
 
@@ -1761,6 +2265,21 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     }
 }
 ```
+
+> 🏛️ **Nota Arquitetural — WebApplicationFactory: teste de integração real**
+>
+> **O que faz:** Sobe a aplicação **inteira** em memória — DI container, middleware pipeline, controllers — mas substitui o banco real por InMemory. É o mais próximo de testar "em produção" sem precisar de infraestrutura externa.
+>
+> **Decisão — InMemory vs Testcontainers:** InMemory é rápido mas não testa SQL real (constraints, migrations, query filters podem se comportar diferente). Na Fase 05, o OrderFlow migra para **Testcontainers** que sobe um SQL Server real em Docker para cada test run. Para Fase 01, InMemory é suficiente e mais didático.
+>
+> 🔬 **Engenharia — Service replacement pattern:**
+> ```csharp
+> var descriptor = services.SingleOrDefault(
+>     d => d.ServiceType == typeof(DbContextOptions<CatalogDbContext>));
+> if (descriptor is not null)
+>     services.Remove(descriptor);
+> ```
+> **Remove-and-replace** — remove o registro do SQL Server e adiciona InMemory. O `Guid.NewGuid()` no nome do banco garante isolamento entre testes — cada test class pega um banco vazio, sem interferência.
 
 **`tests/OrderFlow.Catalog.Api.Tests/CategoriesControllerTests.cs`**
 
@@ -1836,6 +2355,29 @@ public class CategoriesControllerTests(CustomWebApplicationFactory factory)
     }
 }
 ```
+
+> 🔬 **Nota de Engenharia — Anatomia dos testes de integração**
+>
+> ```csharp
+> public class CategoriesControllerTests(CustomWebApplicationFactory factory)
+>     : IClassFixture<CustomWebApplicationFactory>
+> ```
+> **`IClassFixture<T>`** — xUnit cria **uma** instância do factory para toda a classe de testes. `factory.CreateClient()` retorna um `HttpClient` que faz requests para a aplicação in-memory. **Primary constructor** injeta o fixture.
+>
+> **Padrão AAA (Arrange-Act-Assert):**
+> ```csharp
+> // Arrange — prepara dados
+> var request = new CreateCategoryRequest("Electronics", "...");
+> // Act — executa a ação
+> var response = await _client.PostAsJsonAsync("/api/v1/categories", request);
+> // Assert — verifica resultado
+> response.StatusCode.Should().Be(HttpStatusCode.Created);
+> ```
+> Cada teste segue essa estrutura. **FluentAssertions** (`Should().Be()`) é mais legível que `Assert.Equal()` — e gera mensagens de erro melhores quando falha.
+>
+> **Naming convention: `Method_State_ExpectedBehavior`**
+> - `Create_ValidCategory_ReturnsCreated` — o que faz, em que condição, o que espera
+> - `GetById_NonExistentCategory_ReturnsNotFound` — cenário de edge case
 
 **`tests/OrderFlow.Catalog.Api.Tests/ProductsControllerTests.cs`**
 
@@ -1948,6 +2490,21 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
     }
 }
 ```
+
+> 🔬 **Nota de Engenharia — Testes que verificam comportamento, não implementação**
+>
+> ```csharp
+> var response = await _client.DeleteAsync($"/api/v1/products/{created!.Id}");
+> response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+> var getResponse = await _client.GetAsync($"/api/v1/products/{created.Id}");
+> getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+> ```
+> **Teste de soft delete end-to-end** — deleta o produto (soft delete), depois tenta buscar. O Global Query Filter faz o produto "desaparecer" do GET, provando que o fluxo completo funciona: Controller → Service → Entity.Deactivate → SaveChanges → QueryFilter esconde.
+>
+> ```csharp
+> $"MOUSE-{Guid.NewGuid():N}"[..20]
+> ```
+> **SKU único por teste** — `Guid.NewGuid()` gera unicidade, `:N` remove hífens, `[..20]` corta em 20 chars (limite do SKU). Sem isso, testes rodando em paralelo poderiam ter colisão de SKU e falhas intermitentes.
 
 ---
 
