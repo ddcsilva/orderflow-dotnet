@@ -78,6 +78,8 @@ src/Services/Notifications/
 
 ### ADR-011: MassTransit sobre RabbitMQ Client Puro
 
+> 🧠 **Analogia — O Motorista de App vs Carro Próprio:** Usar `RabbitMQ.Client` direto é como ter **carro próprio**: você controla tudo (motor, rota, velocidade), mas também cuida de tudo (mecânico, seguro, multa). MassTransit é como usar um **app de transporte**: você diz "quero ir do ponto A ao B" e ele cuida da rota, retry se o motorista cancelar, aviso se houve problema, e você troca de empresa (de RabbitMQ para Azure Service Bus) sem mudar seu hábito. Para 99% dos projetos .NET, o app é a escolha certa.
+
 **Contexto:** Podemos usar o `RabbitMQ.Client` diretamente ou o MassTransit como abstração.
 
 **Decisão:** MassTransit.
@@ -91,6 +93,8 @@ src/Services/Notifications/
 - É o padrão da indústria .NET
 
 ### ADR-012: Outbox Pattern
+
+> 🧠 **Analogia — A Carta Registrada dos Correios:** Quando você envia uma carta normal, ela pode se perder no caminho e você nunca saberá. Agora, com **carta registrada**, o correio anota no sistema que existe uma carta para enviar *no momento em que você a entrega no balcão*. Mesmo que o caminhão quebre, a carta está registrada e será reenviada. O Outbox Pattern faz exatamente isso: em vez de publicar o evento direto no RabbitMQ (e torcer pra dar certo), salvamos o evento **junto com os dados de negócio na mesma transação do banco**. Um serviço de background fica varrendo o "outbox" e publicando as mensagens pendentes. **Nunca perde evento.**
 
 **Contexto:** Ao confirmar um pedido, precisamos: (1) salvar no banco, (2) publicar evento. Se a publicação falhar depois do commit, perdemos o evento.
 
@@ -150,7 +154,11 @@ Notifications.Worker  ---references---> Contracts (consome)
 
 ## 3. Conceitos de Mensageria
 
+> 💡 **Antes de mergulhar:** Mensageria é como transformar uma empresa de telefonemas (síncronos: "fica na linha enquanto eu processo") em uma empresa de **emails** (assíncronos: "mando a mensagem, você processa quando puder, e me responde depois"). O preço? Complexidade. O ganho? **Resiliência** (se um serviço cair, as mensagens ficam na fila esperando) e **escala** (10 workers consumindo a mesma fila = 10x mais throughput).
+
 ### Exchange, Queue, Binding no RabbitMQ
+
+> 🧠 **Analogia — Os Correios com Departamentos:** O **Exchange** é a central de triagem dos Correios. A **Queue** é a caixa de correio de cada destinatário. O **Binding** é a regra de encaminhamento ("cartas com CEP 01000 vão pra filial Centro"). Quando você publica uma mensagem, ela vai pro Exchange, que decide em quais Queues colocar baseado nos bindings. O consumer lê da sua Queue.
 
 ```
 Producer ──▶ Exchange ──(routing)──▶ Queue ──▶ Consumer
@@ -165,6 +173,8 @@ Cada consumer type ganha sua própria queue.
 ```
 
 ### At-Least-Once Delivery
+
+> 🧠 **Analogia — O Entregador Insistente:** Imagine um entregador que só marca "entregue" quando você **assina o recibo**. Se ele bate na porta e você não abre, ele **volta amanhã**. E de novo. E de novo. Eventualmente você recebe. Mas às vezes ele volta mesmo depois que você já assinou (erro de sistema). Por isso, **você** precisa ser esperto: se já recebeu, não abre o pacote de novo. Isso é idempotência.
 
 RabbitMQ garante entrega **pelo menos uma vez**. Isso significa que um consumer **pode receber a mesma mensagem mais de uma vez**. Por isso, consumers devem ser **idempotentes**.
 
@@ -849,6 +859,8 @@ public class OrderCreatedDomainEventHandlerTests
 
 ## 7. Checkpoint
 
+> 💡 **Por que isso importa no dia-a-dia?** Mensageria é o que separa **monólitos acoplados** de **sistemas distribuídos resilientes**. Sem mensageria, se o serviço de notificação cai enquanto um pedido é confirmado, o cliente nunca recebe email. Com mensageria + outbox, o evento fica na fila esperando o serviço voltar — **zero perda de dados**. Em entrevistas sênior, a pergunta não é "você sabe usar RabbitMQ?" — é "como você garante que nenhum evento se perde entre serviços?". A resposta é Outbox + idempotência.
+
 ### Validação Completa
 
 - [ ] **RabbitMQ rodando:** `docker compose up rabbitmq`
@@ -925,4 +937,111 @@ dotnet test tests/OrderFlow.Notifications.Worker.Tests --verbosity normal
 
 ---
 
-> **Próximo passo:** Avance para `fase-06-cache-observabilidade.md` para implementar Redis cache, OpenTelemetry e Serilog enrichers.
+## 🔬 Aprofundamento Sênior
+
+### A1. Saga: Orquestração vs Coreografia
+
+| | Orquestração | Coreografia |
+|---|---|---|
+| Quem coordena | **State machine central** | Cada serviço reage a eventos |
+| Visibilidade | Alta — fluxo num lugar | Baixa — espalhado |
+| Acoplamento | Médio (todos conhecem o orquestrador) | Baixo (só conhecem eventos) |
+| Debug | Fácil | Difícil (precisa tracing distribuído) |
+| Quando | Fluxos complexos com decisões | Fluxos lineares simples |
+
+**MassTransit Saga (orquestração):**
+
+```csharp
+public class OrderSaga : MassTransitStateMachine<OrderSagaState>
+{
+    public State AwaitingPayment { get; private set; } = null!;
+    public State Paid { get; private set; } = null!;
+    public State Failed { get; private set; } = null!;
+
+    public OrderSaga()
+    {
+        InstanceState(s => s.CurrentState);
+        Initially(
+            When(OrderCreated)
+                .Then(ctx => ctx.Saga.OrderId = ctx.Message.OrderId)
+                .Publish(ctx => new RequestPayment(ctx.Saga.OrderId))
+                .TransitionTo(AwaitingPayment));
+        
+        During(AwaitingPayment,
+            When(PaymentSucceeded).TransitionTo(Paid),
+            When(PaymentFailed).Publish(ctx => new CancelOrder(ctx.Saga.OrderId))
+                                .TransitionTo(Failed));
+    }
+}
+```
+
+### A2. Outbox Avançado — Garantias e Trade-offs
+
+Outbox dá **at-least-once**. Combinação com **idempotent consumer** chega perto de exactly-once.
+
+```csharp
+// Idempotência com Redis SETNX
+public async Task ConsumeAsync(OrderConfirmed evt, CancellationToken ct)
+{
+    var key = $"processed:{evt.MessageId}";
+    var firstTime = await _redis.StringSetAsync(key, "1",
+        expiry: TimeSpan.FromDays(7),
+        when: When.NotExists);
+    if (!firstTime) return;   // duplicata — ignora
+    
+    await _handler.HandleAsync(evt, ct);
+}
+```
+
+**Trade-off Outbox:** latência (worker poll) e contenção na tabela. Em alta escala (>10k events/s), considere **CDC** ([Fase 13](./fase-13-grpc-kafka-eventsourcing.md#7-change-data-capture-debezium)).
+
+### A3. Exactly-Once é Mito
+
+*"Exactly-once delivery is theoretically impossible in distributed systems."* — Kafka docs.
+
+O que existe: **exactly-once processing** = at-least-once + idempotência. Aceite at-least-once e desenhe consumers idempotentes.
+
+### A4. Versionamento de Eventos
+
+Eventos são contratos — precisam evoluir sem quebrar consumers antigos:
+
+```csharp
+// V1
+public record OrderConfirmedEvent(Guid OrderId, decimal Total);
+
+// V2 — adiciona campo opcional, NÃO renomeia/remove
+public record OrderConfirmedEventV2(Guid OrderId, decimal Total, string? Currency = "BRL");
+```
+
+**Regras:**
+- Adicionar campo: ✅ com default
+- Remover campo: ❌ — crie novo evento (V2) e mantenha publicação dupla por tempo
+- Renomear: ❌ — mesmo argumento
+- Mudar tipo: ❌ — novo evento
+
+### A5. DLQ — Estratégia de Recuperação
+
+Mensagem na DLQ = humano precisa decidir. Padrão de operação:
+
+1. **Alerta** quando DLQ > N mensagens
+2. **Dashboard** com mensagens da DLQ + erro
+3. **Replay seletivo** após corrigir bug (botão na ferramenta interna)
+4. **Postmortem** se DLQ acumulou — sintoma de qualidade
+
+### A6. Schema Registry (Kafka)
+
+Quando usar Kafka ([Fase 13](./fase-13-grpc-kafka-eventsourcing.md)), adote **Confluent Schema Registry** ou **Apicurio** com formato Avro/Protobuf:
+- Compatibility check no produce — não publica evento incompatível
+- Schema evolution governada (BACKWARD/FORWARD/FULL)
+
+### 💼 Perguntas Sênior
+
+**"Saga Orquestrada vs Coreografada — quando cada?"** — Orquestração para fluxos com 4+ etapas e decisões complexas (debug e visibilidade); Coreografia para fluxos lineares simples (acoplamento mínimo). Híbrido aceitável.
+
+**"Como garantir ordem de eventos com múltiplos consumers?"** — RabbitMQ: 1 consumer por fila (perde paralelismo) ou message grouping. Kafka: particionar por chave (todos os eventos de `OrderId=X` na mesma partição = ordem garantida) + 1 consumer por partição.
+
+---
+
+> **Próximo passo:** Avance para `fase-06-cache-observabilidade.md`.
+>
+> 🚀 **Trilha Sênior:** [`fase-13-grpc-kafka-eventsourcing.md`](./fase-13-grpc-kafka-eventsourcing.md) — Kafka, Event Sourcing e CDC.

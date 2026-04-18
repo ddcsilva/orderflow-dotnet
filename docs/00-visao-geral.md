@@ -1,5 +1,735 @@
 # OrderFlow — Visão Geral da Solução
 
+> **Versão:** 2.0 — Reformulação Sênior-Grade
+> **Última atualização:** Abril 2026
+> **Runtime:** .NET 10 / C# 13
+> **Tipo:** Projeto de Portfólio Enterprise alinhado às exigências de vagas Pleno/Sênior 2026
+
+---
+
+## Sumário
+
+1. [Para Quem é Este Projeto](#1-para-quem-é-este-projeto)
+2. [Alinhamento com o Mercado .NET 2026](#2-alinhamento-com-o-mercado-net-2026)
+3. [O Que é o OrderFlow](#3-o-que-é-o-orderflow)
+4. [Visão Arquitetural](#4-visão-arquitetural)
+5. [Microserviços e Responsabilidades](#5-microserviços-e-responsabilidades)
+6. [Stack Tecnológica Completa](#6-stack-tecnológica-completa)
+7. [Architecture Decision Records (ADRs)](#7-architecture-decision-records-adrs)
+8. [Estrutura da Solution](#8-estrutura-da-solution)
+9. [Padrões Arquiteturais](#9-padrões-arquiteturais)
+10. [Roadmap de 15 Fases](#10-roadmap-de-15-fases)
+11. [Matriz de Competências Pleno vs Sênior](#11-matriz-de-competências-pleno-vs-sênior)
+12. [Convenções do Projeto](#12-convenções-do-projeto)
+13. [Como Rodar Localmente](#13-como-rodar-localmente)
+14. [Glossário](#14-glossário)
+15. [Perguntas de Entrevista — Sênior](#15-perguntas-de-entrevista--sênior)
+
+---
+
+## 1. Para Quem é Este Projeto
+
+O OrderFlow foi reformulado em 2026 para mapear **um a um** os requisitos das vagas **Pleno e Sênior** de .NET no Brasil. Se você é:
+
+- **Pleno** querendo subir para Sênior — vai praticar arquitetura, padrões avançados (CQRS, DDD tático, Outbox, Saga), resiliência (Polly v8), observabilidade (OpenTelemetry, SLO/SLI) e DevOps cloud-native.
+- **Sênior** consolidando portfólio — vai ter um repositório que demonstra **decisão técnica** em todas as dimensões cobradas: performance, segurança, resiliência, escalabilidade, testabilidade.
+- **Recrutador / Tech Lead** avaliando candidato — vai encontrar ADRs, métricas, testes de integração com Testcontainers, pipelines CI/CD reais e infraestrutura como código.
+
+> **Filosofia:** *"Domínio simples, arquitetura rica."* O negócio (pedidos) cabe em uma página; a arquitetura cobre 32+ tópicos enterprise.
+
+---
+
+## 2. Alinhamento com o Mercado .NET 2026
+
+Esta tabela mapeia os requisitos recorrentes em **descrições reais de vagas Pleno/Sênior** (Brasil, 2025–2026) ao escopo do OrderFlow:
+
+### 2.1 Requisitos Pleno (3+ anos)
+
+| Requisito do Mercado | Coberto em | Profundidade |
+|---|---|---|
+| C# moderno (12/13) + .NET 10 | Toda a solution | ⭐⭐⭐⭐⭐ |
+| ASP.NET Core APIs REST (Controllers + Minimal) | Catalog API + Orders API | ⭐⭐⭐⭐⭐ |
+| EF Core + LINQ avançado | Repositórios, queries compiladas, split queries | ⭐⭐⭐⭐⭐ |
+| SQL Server + modelagem | Database per Service, índices, concurrency | ⭐⭐⭐⭐ |
+| Git, Conventional Commits, PRs | CI bloqueia merge sem padrão | ⭐⭐⭐⭐ |
+| xUnit + Moq + FluentAssertions | Unit + Integration tests | ⭐⭐⭐⭐⭐ |
+| Docker + multi-stage builds | Imagens < 90MB com não-root | ⭐⭐⭐⭐⭐ |
+| CI/CD básico | GitHub Actions completo | ⭐⭐⭐⭐⭐ |
+| Cloud (Azure) básico | Container Apps + Bicep IaC | ⭐⭐⭐⭐ |
+| SOLID + Clean Code | Aplicado e revisado em cada fase | ⭐⭐⭐⭐⭐ |
+
+### 2.2 Requisitos Sênior (6–8+ anos)
+
+| Requisito do Mercado | Coberto em | Profundidade |
+|---|---|---|
+| Microserviços + Database per Service | 4 serviços + Gateway | ⭐⭐⭐⭐⭐ |
+| Mensageria (RabbitMQ, Kafka, SQS) | RabbitMQ + Kafka comparativo (Fase 13) | ⭐⭐⭐⭐⭐ |
+| DDD tático (Aggregates, VOs, Eventos) | Orders bounded context | ⭐⭐⭐⭐⭐ |
+| CQRS + Event Sourcing + CDC | CQRS na Fase 03; Event Sourcing/CDC na Fase 13 | ⭐⭐⭐⭐ |
+| Cache distribuído (Redis) | Cache-aside + decorator pattern | ⭐⭐⭐⭐⭐ |
+| Resiliência (Polly v8: retry, CB, bulkhead, hedging) | **Fase 09 dedicada** | ⭐⭐⭐⭐⭐ |
+| Performance + profiling (BenchmarkDotNet, Span\<T\>) | **Fase 10 dedicada** | ⭐⭐⭐⭐⭐ |
+| Async avançado (ValueTask, IAsyncEnumerable, Channels) | Fase 10 | ⭐⭐⭐⭐⭐ |
+| Kubernetes + Helm + HPA | **Fase 11 dedicada** | ⭐⭐⭐⭐ |
+| OAuth2 / OIDC / IdentityServer (Duende) | **Fase 12 dedicada** | ⭐⭐⭐⭐⭐ |
+| gRPC para comunicação interna | Fase 13 | ⭐⭐⭐⭐ |
+| Observabilidade (OTel, traces, métricas, SLO/SLI) | Fase 06 + **Fase 14 (SRE)** | ⭐⭐⭐⭐⭐ |
+| Feature Flags (release independente) | Fase 14 | ⭐⭐⭐⭐ |
+| Integração com IA (Semantic Kernel, AI Gateway) | **Fase 15 dedicada** | ⭐⭐⭐⭐ |
+| Liderança técnica (ADRs, code review, mentoria) | ADRs em cada decisão; templates de PR | ⭐⭐⭐⭐ |
+| Segurança (OWASP Top 10, secrets, hardening) | Fase 04 + Fase 12 | ⭐⭐⭐⭐⭐ |
+
+### 2.3 O Que Diferencia Este Portfólio
+
+| Sinal | Por Que Importa |
+|---|---|
+| **ADRs em cada decisão** | Demonstra pensamento crítico — sênior decide, não só implementa |
+| **Trade-offs documentados** | Prova que você conhece *alternativas* (não só a solução escolhida) |
+| **Testcontainers em todos os testes de integração** | Sinaliza maturidade DevOps — testes não dependem do "funciona no meu PC" |
+| **Polly v8 + Chaos Engineering** | Praticamente ausente em portfólios típicos — diferenciação imediata |
+| **OpenTelemetry com semantic conventions** | Padrão CNCF — aparece em vagas top-tier |
+| **Bicep IaC + GitHub Environments com approval** | Mostra que você pensa em segurança de pipeline |
+| **Duende IdentityServer real (não JWT artesanal)** | Identity-as-a-Service é o que rodízio empresarial usa |
+
+---
+
+## 3. O Que é o OrderFlow
+
+Sistema simplificado de gestão de pedidos estruturado em microserviços. Simula o fluxo:
+
+```
+Usuário se cadastra → Login → Consulta produtos → Cria pedido → Status muda → Notificação dispara
+```
+
+### Escopo Intencionalmente Limitado
+
+| O que **é** | O que **não é** |
+|---|---|
+| Laboratório arquitetural enterprise | E-commerce real (sem carrinho, frete, pagamento) |
+| Demonstração de padrões e decisões técnicas | Substituto de produção (não tem SLA, suporte) |
+| Repositório referenciável em entrevistas | Tutorial de "olá mundo" |
+| Foco em *como* construir | Foco no *o quê* construir |
+
+---
+
+## 4. Visão Arquitetural
+
+### 4.1 Diagrama de Alto Nível
+
+```
+                    ┌──────────────────────────┐
+                    │   Cliente Web/Mobile      │
+                    └──────────────┬───────────┘
+                                   │ HTTPS + JWT
+                          ┌────────▼─────────┐
+                          │  API Gateway     │  YARP
+                          │  (rate limit,    │
+                          │   auth fwd, CORS)│
+                          └─┬──────┬──────┬──┘
+              ┌─────────────┘      │      └──────────────┐
+              │                    │                     │
+     ┌────────▼────────┐  ┌────────▼────────┐  ┌─────────▼────────┐
+     │ Identity API    │  │ Catalog API     │  │  Orders API ⭐   │
+     │ Duende IS       │  │ Controllers     │  │ Minimal API      │
+     │ OAuth2 + OIDC   │  │ Cache-Aside     │  │ CQRS + DDD       │
+     │ Refresh Rotation│  │ FluentValidation│  │ Outbox + Polly   │
+     └────────┬────────┘  └────────┬────────┘  └────────┬─────────┘
+              │                    │                    │
+        ┌─────▼────┐         ┌─────▼────┐         ┌─────▼────┐
+        │ SQL ID   │         │ SQL+Redis│         │ SQL Order│
+        └──────────┘         └──────────┘         └──────────┘
+                                                       │
+                                              ┌────────▼─────────┐
+                                              │   RabbitMQ       │
+                                              │ (Outbox Consumer)│
+                                              └────────┬─────────┘
+                                                       │
+                                              ┌────────▼─────────┐
+                                              │ Notification     │
+                                              │ Worker (idempot) │
+                                              └──────────────────┘
+
+  ─── INFRAESTRUTURA TRANSVERSAL ───────────────────────────────────
+   Redis · Serilog · Seq · OpenTelemetry · Prometheus · Grafana
+   Docker Compose · Testcontainers · GitHub Actions · Azure ACA
+   Polly v8 · Feature Flags · Semantic Kernel (Fase 15)
+```
+
+### 4.2 Princípios Arquiteturais
+
+| Princípio | Aplicação no OrderFlow |
+|---|---|
+| **Database per Service** | Cada microserviço tem schema isolado. Nunca há JOIN cross-database. |
+| **Comunicação Assíncrona por padrão** | Serviços trocam dados via eventos. HTTP síncrono apenas via Gateway. |
+| **Smart Endpoints, Dumb Pipes** | Lógica nos serviços; broker apenas transporta. |
+| **Design for Failure** | Polly retry/CB, DLQ, idempotência, timeouts em tudo. |
+| **Observability First** | Sem trace/log/metric, não merge. PRs validam telemetria. |
+| **Secure by Default** | OAuth2/OIDC, secrets em Key Vault, OWASP Top 10 checado. |
+| **Cloud-Native Ready** | 12-factor app, stateless, config externalizada. |
+
+---
+
+## 5. Microserviços e Responsabilidades
+
+### 5.1 Identity API (Fase 04 + 12)
+
+| Aspecto | Detalhe |
+|---|---|
+| Framework | ASP.NET Core + **Duende IdentityServer 7** |
+| Protocolo | OAuth2 + OpenID Connect (Authorization Code + PKCE, Client Credentials) |
+| Tokens | JWT assinado RS256 + Refresh Rotation com detecção de reuse |
+| Banco | SQL Server (configuração persistida do IdentityServer) |
+| Padrão | Identity-as-a-Service — outros serviços validam JWT localmente |
+
+### 5.2 Catalog API (Fase 01 + 06)
+
+| Aspecto | Detalhe |
+|---|---|
+| Framework | ASP.NET Core Controllers (versionamento, paginação, OData opcional) |
+| Padrões | Clean Architecture · Decorator (cache) · Repository |
+| Cache | Redis via `IDistributedCache` (cache-aside) + Output Caching |
+| Validação | FluentValidation com pipeline behavior |
+| Banco | SQL Server + EF Core 10 (Code First, value converters, owned types) |
+
+### 5.3 Orders API ⭐ — Serviço de Referência (Fases 02, 03, 05, 09)
+
+| Aspecto | Detalhe |
+|---|---|
+| Framework | ASP.NET Core **Minimal APIs** (route groups, typed results) |
+| Padrões | Clean Architecture + DDD tático + CQRS + Outbox |
+| Comandos | Create / AddItem / Confirm / Cancel / Ship (state machine validada) |
+| Queries | Dapper com SQL otimizado, paginação keyset, projeções |
+| Eventos | Domain Events (MediatR) + Integration Events (MassTransit Outbox) |
+| Resiliência | Polly v8 pipelines em chamadas externas (Catalog, Pagamento mock) |
+
+### 5.4 Notification Worker (Fase 05 + 09)
+
+| Aspecto | Detalhe |
+|---|---|
+| Tipo | `BackgroundService` + MassTransit consumers |
+| Idempotência | Tabela `ProcessedMessages` + filtro MassTransit (Redis-backed) |
+| Resiliência | Retry exponencial + Circuit Breaker + DLQ |
+| Observabilidade | TraceId propagado do producer (W3C Trace Context) |
+
+### 5.5 API Gateway — YARP (Fase 07)
+
+| Aspecto | Detalhe |
+|---|---|
+| Framework | YARP 2.x (mantido pela Microsoft) |
+| Features | Routing, rate limiting, header forwarding, request transforms, CORS |
+| Configuração | `appsettings.json` hot-reloadable + endpoint para health agregado |
+
+---
+
+## 6. Stack Tecnológica Completa
+
+### 6.1 Runtime e Linguagem
+
+| Camada | Tecnologia | Versão | Justificativa |
+|---|---|---|---|
+| Runtime | **.NET** | 10 | LTS, performance ~20% melhor que .NET 8, AOT maduro |
+| Linguagem | **C#** | 13 | Primary constructors, collection expressions, params collections |
+| Web | **ASP.NET Core** | 10 | Minimal APIs + Controllers, source generators |
+
+### 6.2 Persistência
+
+| Componente | Tecnologia | Uso |
+|---|---|---|
+| ORM (escrita) | **Entity Framework Core 10** | Commands, change tracking, migrations, value converters, interceptors |
+| Micro-ORM (leitura) | **Dapper 2.x** | Queries CQRS, projeções otimizadas, paginação keyset |
+| Banco relacional | **SQL Server 2022** | Padrão do mercado .NET BR; compatible com Azure SQL |
+| Cache distribuído | **Redis 7.x** | `IDistributedCache`, distributed locks, idempotência |
+
+### 6.3 Mensageria e Resiliência
+
+| Componente | Tecnologia | Uso |
+|---|---|---|
+| Message Broker | **RabbitMQ 4.x** | Eventos de integração (eventos de domínio cruzando bounded contexts) |
+| Streaming alternativo | **Kafka** (Fase 13 comparativa) | Event sourcing, CDC, alto throughput |
+| Abstração | **MassTransit 8.x** | Outbox nativo, retry, saga state machine, test harness |
+| Resiliência | **Polly 8.x** | Pipelines: retry, circuit breaker, bulkhead, timeout, hedging |
+| In-process | **MediatR 12.x** | CQRS, pipeline behaviors |
+
+### 6.4 Identity, Segurança e RPC
+
+| Componente | Tecnologia | Uso |
+|---|---|---|
+| Identity Server | **Duende IdentityServer 7** | OAuth2 + OIDC completos |
+| Validação | **FluentValidation 11.x** | Regras declarativas com integração MediatR |
+| API Gateway | **YARP 2.x** | Reverse proxy + rate limiting + routing |
+| RPC binário | **gRPC** + Protobuf | Comunicação interna entre serviços (Fase 13) |
+| Feature Flags | **Microsoft.FeatureManagement** + Azure App Configuration | Release toggle, A/B (Fase 14) |
+
+### 6.5 Observabilidade
+
+| Componente | Tecnologia | Uso |
+|---|---|---|
+| Logs estruturados | **Serilog 4.x** | Sinks para console, Seq, Elasticsearch |
+| Log viewer (dev) | **Seq** | Pesquisa por propriedade tipada |
+| Telemetria distribuída | **OpenTelemetry 1.x** | Traces, metrics, logs com semantic conventions |
+| Métricas viz | **Prometheus + Grafana** | Dashboards RED/USE, SLO/SLI |
+| Tracing viz | **Jaeger / Tempo** | Traces distribuídos |
+| Health Checks | **AspNetCore.HealthChecks** | Liveness, readiness, startup probes |
+
+### 6.6 Testes e Qualidade
+
+| Componente | Tecnologia | Uso |
+|---|---|---|
+| Test framework | **xUnit 2.x** | Unit + integration |
+| Mocking | **NSubstitute 5.x** ou Moq | Mocks legíveis |
+| Assertions | **FluentAssertions 7.x** | Assertions expressivas |
+| Integration | **WebApplicationFactory** + **Testcontainers 4.x** | SQL/RabbitMQ/Redis reais em containers |
+| Benchmarks | **BenchmarkDotNet** | Comparação Span vs string, Dapper vs EF (Fase 10) |
+| Contract testing | **Pact .NET** | Validação de contratos entre serviços (Fase 13) |
+
+### 6.7 DevOps e Cloud
+
+| Componente | Tecnologia | Uso |
+|---|---|---|
+| Container | **Docker** + Compose | Dev local + builds multi-stage |
+| Orquestração local | Docker Compose | 11+ containers com healthchecks |
+| Orquestração prod | **Azure Container Apps** (default) ou **Kubernetes/Helm** (Fase 11) | Auto-scaling, blue-green |
+| CI/CD | **GitHub Actions** | Build, test, push, deploy com environments |
+| IaC | **Bicep** | Provisionamento Azure declarativo |
+| Secrets | **Azure Key Vault** + GitHub Secrets | Sem segredos em repositório |
+| AI | **Semantic Kernel** + AI Gateway pattern (Fase 15) | RAG, function calling, sumarização |
+
+---
+
+## 7. Architecture Decision Records (ADRs)
+
+Cada decisão maior é registrada em ADR. Resumo das principais:
+
+| ADR | Decisão | Trade-off Aceito |
+|---|---|---|
+| **ADR-001** | .NET 10 + C# 13 (não .NET 8 LTS) | Pacotes terceiros podem demorar a suportar |
+| **ADR-002** | EF Core (write) + Dapper (read) | Duas tecnologias para gerenciar |
+| **ADR-003** | MassTransit sobre RabbitMQ.Client | Camada extra de abstração; ganho enorme em outbox/retry/saga |
+| **ADR-004** | MediatR para CQRS in-process | Licença comercial em uso intensivo desde v12; alternativa: Wolverine |
+| **ADR-005** | YARP como Gateway | Sem features de Ocelot (multi-tenancy nativo) |
+| **ADR-006** | SQL Server (não PostgreSQL) | Custo Azure SQL > Postgres; mas alinhado com vagas BR |
+| **ADR-007** | Serilog + OpenTelemetry (não App Insights direto) | Boilerplate maior; vendor-neutral |
+| **ADR-008** | **Duende IdentityServer** (não JWT artesanal) | Licença comercial acima de US$1M de receita; padrão de mercado |
+| **ADR-009** | **Polly v8 pipelines** (não retry artesanal) | Curva de aprendizado; resiliência de produção |
+| **ADR-010** | **gRPC para comunicação interna**, REST público | Dois protocolos; performance + contratos fortes internos |
+| **ADR-011** | **Bicep** sobre Terraform/Pulumi | Lock-in Azure; menor curva para times .NET |
+| **ADR-012** | Testcontainers em integration tests (não SQLite/in-memory) | Tests mais lentos; correção real de comportamento |
+| **ADR-013** | **Outbox** sobre 2PC distribuído | Latência maior; sem coordenador distribuído frágil |
+| **ADR-014** | **Semantic Kernel** (não LangChain.NET) | Comunidade menor; suporte first-party Microsoft |
+
+> Cada ADR completo vive em `docs/adrs/NNN-titulo.md` no formato MADR.
+
+---
+
+## 8. Estrutura da Solution
+
+```
+OrderFlow/
+├── src/
+│   ├── ApiGateway/
+│   │   └── OrderFlow.Gateway/                # YARP
+│   ├── Services/
+│   │   ├── Identity/                          # Duende IdentityServer
+│   │   ├── Catalog/                           # Clean Arch + Cache
+│   │   ├── Orders/                            # ⭐ DDD + CQRS + Outbox + Polly
+│   │   └── Notification/                      # Worker + Consumers
+│   └── BuildingBlocks/
+│       ├── OrderFlow.SharedKernel/            # Entity, AggregateRoot, Result, ValueObject
+│       ├── OrderFlow.MessageContracts/        # Eventos de integração
+│       ├── OrderFlow.Resilience/              # Pipelines Polly reutilizáveis (Fase 09)
+│       └── OrderFlow.Observability/           # OTel setup, logging extensions (Fase 06)
+│
+├── tests/
+│   ├── *.UnitTests/                           # Domínio puro, handlers
+│   ├── *.IntegrationTests/                    # Testcontainers (SQL, Rabbit, Redis)
+│   ├── *.ContractTests/                       # Pact provider/consumer (Fase 13)
+│   └── *.Benchmarks/                          # BenchmarkDotNet (Fase 10)
+│
+├── deploy/
+│   ├── docker/                                # Compose multi-profile
+│   ├── helm/                                  # Helm charts (Fase 11)
+│   ├── bicep/                                 # IaC Azure (Fase 08)
+│   └── k8s/                                   # Manifests Kubernetes (Fase 11)
+│
+├── .github/workflows/                         # ci.yml, cd.yml, security-scan.yml
+│
+├── docs/
+│   ├── 00-visao-geral.md                      # Este documento
+│   ├── fase-01..15-*.md                       # 15 fases progressivas
+│   ├── orderflow-guide.html                   # Guia visual didático
+│   └── adrs/                                  # ADRs no formato MADR
+│
+├── Directory.Packages.props                   # Central Package Management
+├── Directory.Build.props                      # MSBuild config compartilhada
+├── global.json                                # Pin SDK
+├── .editorconfig                              # Code style enforced
+└── .gitignore
+```
+
+### Dependency Rule
+
+```
+Domain ← Application ← Infrastructure ← Api
+   │                                       │
+   └──── SharedKernel ────────────────────┘
+              │
+        MessageContracts · Resilience · Observability
+```
+
+---
+
+## 9. Padrões Arquiteturais
+
+### Padrões Estruturais
+- **Clean Architecture** — fronteiras explícitas, regra de dependência
+- **Vertical Slice Architecture** — alternativa para serviços CRUD-heavy (Fase 01 deep dive)
+- **Database per Service** — autonomia + ownership
+
+### Padrões Táticos (DDD)
+- **Aggregate Root**, **Entity**, **Value Object**, **Domain Service**
+- **Domain Event** (MediatR) vs **Integration Event** (MassTransit)
+- **Repository** + **Unit of Work** (atualizando o aggregate inteiro)
+- **Specification Pattern** para queries complexas
+
+### Padrões de Integração
+- **CQRS** — modelos de leitura/escrita separados
+- **Outbox Pattern** — at-least-once guarantee sem 2PC
+- **Saga / Process Manager** — orquestração de transações distribuídas (Fase 05)
+- **Idempotent Consumer** — exigência do at-least-once
+- **Event Sourcing** + **CDC (Debezium)** — Fase 13 comparativa
+
+### Padrões de Resiliência (Fase 09)
+- **Retry** com backoff exponencial + jitter
+- **Circuit Breaker** (closed → open → half-open)
+- **Bulkhead** — isolamento de recursos
+- **Timeout** — fail-fast
+- **Hedging** — primeiro a responder vence
+- **Fallback** — degradação graciosa
+
+### Padrões de Observabilidade
+- **The 3 Pillars** — Logs, Metrics, Traces
+- **RED Method** (Rate, Errors, Duration) para serviços
+- **USE Method** (Utilization, Saturation, Errors) para recursos
+- **SLO/SLI/Error Budget** — Fase 14
+
+### Padrões de Cloud-Native
+- **12-Factor App** — config externalizada, stateless, logs como streams
+- **Sidecar Pattern** — Dapr opcional na Fase 11
+- **Strangler Fig** — quando migrar legado
+
+---
+
+## 10. Roadmap de 15 Fases
+
+### Visão Macro
+
+```
+█ FUNDAÇÃO          █ DOMÍNIO          █ APPLICATION       █ SEGURANÇA
+Fase 01             Fase 02             Fase 03             Fase 04
+Clean Arch          DDD Tático          CQRS + MediatR      JWT + Refresh
+EF Core 10          Aggregates          Dapper              Identity básico
+
+█ INTEGRAÇÃO        █ CACHE/OBSERV.    █ EDGE              █ DEPLOY
+Fase 05             Fase 06             Fase 07             Fase 08
+RabbitMQ            Redis + OTel        YARP + Docker       GitHub Actions
+Outbox + Saga       Serilog + Seq       Testcontainers      Azure ACA + Bicep
+
+═══════════════ NOVO: TRILHA SÊNIOR (FASES 09-15) ═══════════════
+
+█ RESILIÊNCIA       █ PERFORMANCE      █ ORQUESTRAÇÃO       █ IDENTITY AVANÇADA
+Fase 09             Fase 10             Fase 11             Fase 12
+Polly v8            Span/Channels       Kubernetes          Duende IdentityServer
+Chaos Engineering   BenchmarkDotNet     Helm + HPA          OAuth2 + OIDC
+                    AOT + Source Gen    Service Mesh
+
+█ INTER-SERVIÇO     █ SRE                █ AI INTEGRATION
+Fase 13             Fase 14              Fase 15
+gRPC + Kafka        Feature Flags        Semantic Kernel
+Event Sourcing      SLO/SLI/Budget       AI Gateway pattern
+CDC (Debezium)      Pact contracts       RAG sobre catálogo
+```
+
+### Tabela Detalhada
+
+| # | Fase | Foco | Documento | Nível |
+|---|---|---|---|---|
+| 01 | Fundação e Estrutura | Solution, Clean Arch, EF Core, Docker | `fase-01-fundacao-estrutura.md` | Pleno |
+| 02 | Domínio Rico e DDD | Aggregates, VOs, Domain Events | `fase-02-dominio-ddd.md` | Pleno → Sênior |
+| 03 | CQRS e Application | MediatR, Dapper, Pipeline Behaviors | `fase-03-cqrs-application.md` | Pleno → Sênior |
+| 04 | Autenticação Básica | JWT, Refresh Token, Policies | `fase-04-autenticacao-seguranca.md` | Pleno |
+| 05 | Mensageria Assíncrona | RabbitMQ, MassTransit, Outbox, Saga | `fase-05-mensageria-async.md` | Sênior |
+| 06 | Cache e Observabilidade | Redis, OpenTelemetry, Serilog | `fase-06-cache-observabilidade.md` | Sênior |
+| 07 | Gateway e Docker | YARP, multi-stage, Testcontainers | `fase-07-gateway-docker.md` | Pleno → Sênior |
+| 08 | CI/CD e Cloud | GitHub Actions, Container Apps, Bicep | `fase-08-cicd-cloud.md` | Sênior |
+| **09** | **Resiliência (Polly v8)** | Retry, CB, Bulkhead, Hedging, Chaos | `fase-09-resiliencia-polly.md` | **Sênior** |
+| **10** | **Performance & C# Moderno** | Span, ValueTask, Channels, BenchmarkDotNet, AOT | `fase-10-performance-csharp-moderno.md` | **Sênior** |
+| **11** | **Kubernetes & Service Mesh** | Manifests, HPA, Helm, Dapr/Linkerd | `fase-11-kubernetes-service-mesh.md` | **Sênior** |
+| **12** | **OAuth2/OIDC com Duende IS** | Authorization Code + PKCE, Client Credentials | `fase-12-oauth2-identityserver.md` | **Sênior** |
+| **13** | **gRPC, Kafka & Event Sourcing** | Comunicação binária, CDC, Outbox vs Sourcing | `fase-13-grpc-kafka-eventsourcing.md` | **Sênior** |
+| **14** | **Feature Flags & SRE** | SLO/SLI/Error Budget, RED/USE, Pact | `fase-14-feature-flags-sre.md` | **Sênior** |
+| **15** | **Integração com IA** | Semantic Kernel, AI Gateway, RAG | `fase-15-ai-integration.md` | **Sênior+** |
+
+> **Pré-requisitos:** Fases 01-08 são lineares. Fases 09-15 podem ser estudadas em qualquer ordem após a 08.
+
+---
+
+## 11. Matriz de Competências Pleno vs Sênior
+
+Marque conforme avança. Cada item rastreia uma habilidade exigida em vagas reais.
+
+### Bloco A — Fundação (Pleno obrigatório)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 01 | C# 13 (primary ctors, collection expr, records, pattern matching) | Fases 01-08 | ⬜ |
+| 02 | ASP.NET Core 10 (Controllers + Minimal APIs) | Fase 01, 03 | ⬜ |
+| 03 | EF Core 10 (Code First, Fluent API, Migrations) | Fase 01 | ⬜ |
+| 04 | LINQ avançado (deferred execution, projection, GroupBy) | Fase 03 | ⬜ |
+| 05 | SQL Server modelagem (índices, FK, concurrency tokens) | Fase 01-02 | ⬜ |
+| 06 | Git + Conventional Commits + PR template | Todas | ⬜ |
+| 07 | xUnit + FluentAssertions + Moq/NSubstitute | Todas | ⬜ |
+| 08 | Docker multi-stage + Compose | Fase 07 | ⬜ |
+| 09 | SOLID + Clean Code (revisão por par obrigatória) | Todas | ⬜ |
+
+### Bloco B — Arquitetura (Pleno → Sênior)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 10 | Clean Architecture (4 camadas + Dependency Rule) | Fase 01 | ⬜ |
+| 11 | Vertical Slice Architecture (alternativa) | Fase 01 deep dive | ⬜ |
+| 12 | DDD — Aggregates, Entities, Value Objects | Fase 02 | ⬜ |
+| 13 | Domain Events vs Integration Events | Fase 02, 05 | ⬜ |
+| 14 | Rich Domain Model (anti-anemic) | Fase 02 | ⬜ |
+| 15 | CQRS com MediatR + Pipeline Behaviors | Fase 03 | ⬜ |
+| 16 | Result Pattern (sem exceções para fluxo) | Fase 03 | ⬜ |
+| 17 | Repository + Unit of Work no aggregate | Fase 02-03 | ⬜ |
+
+### Bloco C — Segurança (Sênior)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 18 | JWT Bearer + Refresh Token Rotation | Fase 04 | ⬜ |
+| 19 | OAuth2 + OIDC (Authorization Code + PKCE) | **Fase 12** | ⬜ |
+| 20 | Duende IdentityServer (clients, scopes, claims) | **Fase 12** | ⬜ |
+| 21 | OWASP Top 10 (mass assignment, SSRF, IDOR) | Fase 04 + 12 | ⬜ |
+| 22 | Secrets Management (Key Vault, GitHub Secrets) | Fase 08 | ⬜ |
+| 23 | Rate Limiting + CORS estrito | Fase 04, 07 | ⬜ |
+
+### Bloco D — Integração (Sênior)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 24 | RabbitMQ + MassTransit (producers/consumers) | Fase 05 | ⬜ |
+| 25 | Outbox Pattern (transactional messaging) | Fase 05 | ⬜ |
+| 26 | Idempotent Consumer + DLQ + Retry | Fase 05 | ⬜ |
+| 27 | Saga / Process Manager | Fase 05 | ⬜ |
+| 28 | Kafka comparativo + Event Sourcing | **Fase 13** | ⬜ |
+| 29 | gRPC + Protobuf entre serviços | **Fase 13** | ⬜ |
+| 30 | Change Data Capture (Debezium) | **Fase 13** | ⬜ |
+| 31 | Contract Testing (Pact) | **Fase 14** | ⬜ |
+
+### Bloco E — Performance e Resiliência (Sênior)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 32 | Polly v8 — pipelines (retry, CB, bulkhead, hedging) | **Fase 09** | ⬜ |
+| 33 | Chaos Engineering (Simmy, fault injection) | **Fase 09** | ⬜ |
+| 34 | BenchmarkDotNet (memory, throughput) | **Fase 10** | ⬜ |
+| 35 | Span\<T\>, Memory\<T\>, ArrayPool | **Fase 10** | ⬜ |
+| 36 | ValueTask, IAsyncEnumerable, Channels | **Fase 10** | ⬜ |
+| 37 | EF Core compiled queries, split queries, AsNoTracking | Fase 10 | ⬜ |
+| 38 | AOT compilation + Source Generators | **Fase 10** | ⬜ |
+| 39 | Cache distribuído + invalidação por evento | Fase 06 | ⬜ |
+
+### Bloco F — Observabilidade (Sênior)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 40 | OpenTelemetry (traces, metrics, logs com OTLP) | Fase 06 | ⬜ |
+| 41 | Serilog enrichers + correlation ID | Fase 06 | ⬜ |
+| 42 | Health Checks (liveness/readiness/startup) | Fase 06 | ⬜ |
+| 43 | RED + USE methods | **Fase 14** | ⬜ |
+| 44 | SLO / SLI / Error Budget | **Fase 14** | ⬜ |
+| 45 | Grafana dashboards + Prometheus alertas | Fase 06, 14 | ⬜ |
+
+### Bloco G — Cloud-Native e DevOps (Sênior)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 46 | Docker multi-stage + non-root + scan | Fase 07 | ⬜ |
+| 47 | Testcontainers em todos os integration tests | Fase 05-07 | ⬜ |
+| 48 | GitHub Actions com environments + approvals | Fase 08 | ⬜ |
+| 49 | Bicep IaC (parameter files, modules) | Fase 08 | ⬜ |
+| 50 | Azure Container Apps (scaling rules, revisions) | Fase 08 | ⬜ |
+| 51 | Kubernetes (manifests, HPA, ConfigMap, Secret) | **Fase 11** | ⬜ |
+| 52 | Helm charts | **Fase 11** | ⬜ |
+| 53 | Service Mesh awareness (Linkerd/Dapr) | **Fase 11** | ⬜ |
+| 54 | Feature Flags com Microsoft.FeatureManagement | **Fase 14** | ⬜ |
+
+### Bloco H — Modernização e IA (Sênior+)
+
+| # | Competência | Onde | Status |
+|---|---|---|---|
+| 55 | Semantic Kernel (function calling, planners) | **Fase 15** | ⬜ |
+| 56 | AI Gateway pattern (rate, cost, fallback) | **Fase 15** | ⬜ |
+| 57 | RAG (Retrieval Augmented Generation) | **Fase 15** | ⬜ |
+| 58 | Vector Database (Azure AI Search / Qdrant) | **Fase 15** | ⬜ |
+
+> **58 competências mapeadas** a requisitos reais de vagas Pleno/Sênior 2026.
+
+---
+
+## 12. Convenções do Projeto
+
+### Git
+| Item | Regra |
+|---|---|
+| Branch | `feat/*`, `fix/*`, `chore/*`, `docs/*`, `refactor/*` |
+| Commit | Conventional Commits — `feat(orders): add saga for cancellation` |
+| PR | Template obrigatório: contexto, mudanças, screenshots, checklist |
+
+### C#
+| Item | Regra |
+|---|---|
+| Nullable | `<Nullable>enable</Nullable>` em todos os projetos |
+| Primary constructors | Default em services e handlers |
+| `sealed` | Toda classe que não é base — performance + intent |
+| `CancellationToken` | Obrigatório em todo método async (último parâmetro) |
+| `ConfigureAwait(false)` | Obrigatório em libs (não em ASP.NET Core handlers) |
+| Records | DTOs, Commands, Queries, Events, Value Objects |
+| Result\<T\> | Para fluxos esperados; exceções só para casos excepcionais |
+
+### Testes
+| Item | Regra |
+|---|---|
+| Naming | `Method_Scenario_ExpectedResult` |
+| AAA | Arrange / Act / Assert separados visualmente |
+| Cobertura mínima | 80% no Domain, 70% na Application |
+| Integration | Testcontainers (nunca SQLite/in-memory para EF Core) |
+
+---
+
+## 13. Como Rodar Localmente
+
+### Pré-requisitos
+- .NET 10 SDK · Docker Desktop · Git · `dotnet ef` global tool
+
+### Setup
+```bash
+git clone https://github.com/seu-usuario/OrderFlow.git
+cd OrderFlow
+
+# Sobe infraestrutura (SQL, Redis, RabbitMQ, Seq, Jaeger, Prometheus, Grafana)
+docker compose -f deploy/docker/docker-compose.yml up -d
+
+# Migrations
+./scripts/migrate-all.ps1
+
+# Roda tudo
+docker compose -f deploy/docker/docker-compose.yml --profile all up -d
+```
+
+### URLs
+| Serviço | URL |
+|---|---|
+| Gateway | `http://localhost:8080` |
+| Identity (Duende) | `http://localhost:5001/.well-known/openid-configuration` |
+| Catalog Swagger | `http://localhost:5002/swagger` |
+| Orders Swagger | `http://localhost:5003/swagger` |
+| Seq (logs) | `http://localhost:5341` |
+| Jaeger (traces) | `http://localhost:16686` |
+| Grafana | `http://localhost:3000` (admin/admin) |
+| RabbitMQ UI | `http://localhost:15672` (guest/guest) |
+
+---
+
+## 14. Glossário
+
+| Termo | Definição |
+|---|---|
+| **Aggregate** | Cluster de entidades + VOs com uma raiz garantindo consistência |
+| **AOT** | Ahead-of-Time compilation — gera código nativo no build, sem JIT |
+| **Bounded Context** | Limite lógico onde um modelo de domínio é coerente |
+| **CDC** | Change Data Capture — captura mudanças do DB e publica como eventos |
+| **CQRS** | Command Query Responsibility Segregation |
+| **Circuit Breaker** | Padrão que abre o circuito após N falhas consecutivas |
+| **Error Budget** | Quanto erro é tolerável antes de pausar features (SRE) |
+| **Hedging** | Disparar múltiplas requisições em paralelo, primeiro a responder vence |
+| **Idempotência** | Processar a mesma mensagem N vezes = 1 vez |
+| **OIDC** | OpenID Connect — camada de identidade sobre OAuth2 |
+| **Outbox** | Tabela transacional de eventos pendentes |
+| **PKCE** | Proof Key for Code Exchange — proteção do Authorization Code Flow |
+| **RED Method** | Rate, Errors, Duration — métricas de serviço |
+| **SLO/SLI** | Service Level Objective / Indicator |
+| **Saga** | Padrão de transação distribuída via eventos compensatórios |
+| **Sidecar** | Container auxiliar que roda lado a lado (logs, mesh, secrets) |
+| **USE Method** | Utilization, Saturation, Errors — métricas de recurso |
+| **Vertical Slice** | Arquitetura por feature em vez de camada |
+
+---
+
+## 15. Perguntas de Entrevista — Sênior
+
+> Selecionadas das 80+ perguntas distribuídas pelas 15 fases. Foco no nível Sênior.
+
+### Arquitetura
+**1. "Quando você usaria Vertical Slice em vez de Clean Architecture?"**
+— Quando o sistema é majoritariamente CRUD com poucas regras transversais. Vertical Slice elimina o overhead de 4 camadas e organiza por **feature** (cada feature tem seu Endpoint + Handler + Validator + DTO + DataAccess). Acoplamento alto **dentro** da feature, baixo **entre** features. Trade-off: menos reuso, mais duplicação aceita conscientemente.
+
+**2. "Como decidir o tamanho de um microserviço?"**
+— Pelo **Bounded Context** (DDD), não pelo tamanho de código. Critérios: (1) **Cohesion** — o serviço resolve um problema de negócio coeso? (2) **Independência de deploy** — posso fazer deploy sem coordenar com outro time? (3) **Database ownership** — ele é dono de seus dados? Anti-padrão: serviço que precisa de JOIN com outro = limites errados.
+
+### Resiliência
+**3. "Diferença entre Circuit Breaker e Retry. Quando combinar?"**
+— **Retry** tenta de novo pensando que é falha transiente. **Circuit Breaker** bloqueia chamadas após N falhas para dar tempo do serviço se recuperar. **Combinação correta:** Retry **dentro** do Circuit Breaker — o CB conta as falhas (incluindo retries) e abre se passar do limite. Polly v8: `pipelineBuilder.AddRetry(...).AddCircuitBreaker(...)`.
+
+**4. "O que é Bulkhead Pattern e quando aplicar?"**
+— Isolamento de recursos para que falha em um endpoint não consuma todas as conexões. Ex: pool de 100 conexões — se endpoint A consome todas, endpoint B trava. Bulkhead: A tem cota de 60, B de 40. **Quando:** quando você tem dependências externas com SLAs diferentes.
+
+### Performance
+**5. "Quando usar `ValueTask` em vez de `Task`?"**
+— Quando o método pode completar **sincronamente** na maior parte das chamadas (ex: cache hit). `Task` aloca um objeto no heap; `ValueTask` é uma struct — sem alocação no caso síncrono. **Cuidado:** `ValueTask` não pode ser awaited mais de uma vez nem usada com `Task.WhenAll` sem `.AsTask()`.
+
+**6. "O que é `IAsyncEnumerable<T>` e quando substitui `Task<List<T>>`?"**
+— Streaming assíncrono de itens. Em vez de carregar 10k registros em memória, processa um a um conforme chegam. **Substitui Task\<List\<T\>\>** quando: (1) o consumidor processa item-a-item, (2) a fonte é grande/streaming (DB cursor, file, network), (3) latência do primeiro byte importa.
+
+### Observabilidade e SRE
+**7. "Diferencie SLO, SLI e SLA."**
+— **SLI** (Indicator): métrica medida (ex: % requests < 200ms). **SLO** (Objective): meta interna (ex: 99% das requests < 200ms num mês). **SLA** (Agreement): contrato com cliente (ex: 99.9% uptime ou crédito). SLO < SLA sempre — você quer descobrir antes do cliente.
+
+**8. "O que é Error Budget?"**
+— `1 - SLO`. Se SLO é 99.9% mensal, error budget = 0.1% = 43min de erro/mês. Enquanto há budget, deploy livre. Budget esgotado, congela features e foca em confiabilidade.
+
+### Identity e Segurança
+**9. "Por que Authorization Code Flow + PKCE em SPA, e não Implicit Flow?"**
+— Implicit retornava token na URL (vulnerável a histórico, referer, log). PKCE adiciona um **code verifier** dinâmico que o atacante não consegue interceptar mesmo se pegar o code. Padrão atual: **Authorization Code + PKCE** para qualquer client público (SPA, mobile, desktop).
+
+**10. "Como você revogaria acesso de um usuário comprometido em um sistema com JWT?"**
+— Você não revoga o JWT (ele expira em ~15min). Você: (1) revoga o **refresh token** no banco, (2) opcionalmente mantém uma **denylist** Redis com TTL = vida do JWT, (3) invalida sessão do IdentityServer. Sem refresh, em 15min o usuário está fora.
+
+### Mensageria e Dados
+**11. "Diferença entre RabbitMQ e Kafka. Quando usar cada?"**
+— **RabbitMQ:** broker tradicional (smart broker, dumb consumer). Routing complexo, baixa latência, ack por mensagem. Ideal para tarefas assíncronas, comandos, eventos transacionais. **Kafka:** log distribuído (dumb broker, smart consumer). Alto throughput, replay, retenção longa, particionamento por chave. Ideal para event sourcing, analytics, CDC, streaming.
+
+**12. "O que é Change Data Capture e por que substituir Outbox em alta escala?"**
+— CDC lê o **transaction log do DB** (sem código de aplicação) e publica como evento. **Vantagem sobre Outbox:** zero impacto na transação de escrita, captura mudanças feitas por SQL direto, captura DELETEs físicos. **Trade-off:** infraestrutura extra (Debezium + Kafka), eventual consistency mais visível.
+
+### Liderança Técnica
+**13. "Como você convenceria seu time a adotar OpenTelemetry em vez de só Application Insights?"**
+— Argumentos: (1) **Vendor neutrality** — exporta para qualquer backend (Datadog, New Relic, Grafana). (2) **Padrão CNCF** — semantic conventions consistentes entre linguagens. (3) **Custo** — pode ir para self-hosted. (4) **Migração futura** — sem reescrever instrumentação. Trade-off honesto: setup inicial maior; vale para sistemas que escalam ou multi-cloud.
+
+**14. "Como você lidaria com legacy .NET Framework durante migração para .NET 10?"**
+— **Strangler Fig Pattern**: novo desenvolvimento em .NET 10, legado coexistindo. (1) Identificar bounded contexts no monolito. (2) Extrair um serviço por vez para .NET 10 com gateway roteando o tráfego. (3) Migrar consumidores aos poucos. (4) Aposentar legado quando todos os endpoints saírem. Comunicação durante migração: REST se síncrono inevitável, eventos via broker quando possível.
+
+---
+
+## Próximo Passo
+
+➡️ Comece em [`fase-01-fundacao-estrutura.md`](./fase-01-fundacao-estrutura.md), ou pule direto para a **trilha Sênior** em [`fase-09-resiliencia-polly.md`](./fase-09-resiliencia-polly.md) se você já domina os fundamentos.
+
+> Para visualização interativa, abra [`orderflow-guide.html`](./orderflow-guide.html) no browser.
+# OrderFlow — Visão Geral da Solução
+
 > **Versão:** 1.0  
 > **Última atualização:** Abril 2026  
 > **Runtime:** .NET 10 / C# 13  

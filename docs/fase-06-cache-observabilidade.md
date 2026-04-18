@@ -72,6 +72,8 @@ docker-compose.yml
 
 ### ADR-014: Redis como Cache Distribuído
 
+> 🧠 **Analogia — A Agenda de Contatos no Celular:** Quando você precisa ligar pra alguém, não abre a lista telefônica da cidade toda vez (ir ao banco de dados). Você olha seus **contatos salvos** (cache). Se o número está lá, liga direto (cache HIT, < 1ms). Se não, pesquisa na lista, encontra, salva no celular e liga (cache MISS → consulta banco → salva no cache). Redis é essa agenda: rápido (in-memory), compartilhado entre dispositivos (distribuído) e com espaço limitado (eviction policy expulsa os contatos menos usados).
+
 **Contexto:** Precisamos de cache compartilhado entre instâncias da mesma API (quando escalar horizontalmente).
 
 **Decisão:** Redis via `IDistributedCache` com cache-aside pattern no Catalog API.
@@ -85,6 +87,8 @@ Request → CachedProductService
 ```
 
 ### ADR-015: Decorator Pattern para Cache
+
+> 🧠 **Analogia — A Capa Protetora do Celular:** Seu celular (ProductService) funciona perfeitamente sozinho. A capa (CachedProductService) não muda o celular — ela **envolve** ele adicionando uma funcionalidade extra (proteção/cache). Você pode trocar a capa sem abrir o celular, ou usar o celular sem capa. **Esse é o Decorator**: uma camada que adiciona comportamento sem modificar o original. O `ProductService` nem sabe que está sendo cacheado.
 
 **Decisão:** Usar o padrão Decorator ao invés de poluir o ProductService com lógica de cache.
 
@@ -151,6 +155,8 @@ public class CachedProductService : IProductService  // Mesmo contrato
 
 ### Cache-Aside Pattern
 
+> 💡 **Uma regra de ouro do cache:** *"Há apenas duas coisas difíceis em ciência da computação: invalidação de cache e dar nome às coisas."* — Phil Karlton. O cache é simples de implementar e **muito** fácil de errar. Dados desatualizados, inconsistências entre instâncias, cache stampede... por isso adotamos estratégias claras de expiração e invalidação.
+
 ```
 1. Client → GET /api/products/123
 2. CachedProductService:
@@ -174,6 +180,8 @@ Estratégia recomendada:
 
 ### Distributed Tracing
 
+> 🧠 **Analogia — O Rastreio do Pacote:** Quando você compra algo online, recebe um **código de rastreamento**. Com ele, você vê: "15:00 saiu do CD → 16:30 chegou na filial → 18:00 saiu pra entrega → 19:00 entregue". Cada etapa é um **Span** (operação individual), e o código de rastreamento é o **TraceId**. Distributed Tracing é isso: um TraceId que acompanha a requisição do browser até o último consumer, mostrando exatamente onde cada milissegundo foi gasto.
+
 ```
 [Trace: abc-123]
   ├── [Span: HTTP POST /api/orders] (Orders API, 45ms)
@@ -188,6 +196,8 @@ O TraceId (abc-123) é propagado automaticamente entre serviços via headers HTT
 ```
 
 ### Serilog Structured Logging
+
+> 🧠 **Analogia — Ficha Médica vs Anotação em Guardanapo:** Log com string interpolation é escrever sintomas num guardanapo — você lê, mas não consegue filtrar "todos os pacientes com febre na ala B". Log estruturado é preencher uma ficha padronizada: cada campo (OrderId, UserId, Duration) é um campo pesquisável no Seq. Quando o sistema der problema às 3h da manhã e você precisar filtrar "todas as requisições do usuário X nos últimos 30 minutos", a ficha salva sua noite.
 
 ```csharp
 // ❌ String interpolation — não estruturado
@@ -796,6 +806,8 @@ public class HealthCheckTests : IClassFixture<WebApplicationFactory<Program>>
 
 ## 7. Checkpoint
 
+> 💡 **Por que isso importa no dia-a-dia?** Cache e observabilidade são os **superpoderes do Sênior em produção**. Sem cache, cada request vai ao banco — com 1000 req/s, o banco sofre e a latência explode. Sem observabilidade, quando o sistema fica lento às 3h da manhã, você está **cego** — não sabe qual serviço está demorando, qual query está lenta, quantos erros estão acontecendo. Cache reduz latência de 50ms para <1ms. OpenTelemetry mostra exatamente onde os milissegundos estão sendo gastos. **Juntos, são a diferença entre "o sistema está lento" e "encontrei o problema em 5 minutos".**
+
 ### Validação Completa
 
 - [ ] **Redis rodando:** `docker compose up redis`
@@ -875,4 +887,121 @@ $$\text{Cache Hit Ratio} = \frac{\text{Hits}}{\text{Hits} + \text{Misses}} \time
 
 ---
 
-> **Próximo passo:** Avance para `fase-07-gateway-docker.md` para implementar o API Gateway com YARP, Docker multi-stage builds e Testcontainers.
+## 🔬 Aprofundamento Sênior
+
+### A1. Cache Distribuído — Padrões Avançados
+
+#### Cache Stampede (Thundering Herd)
+Cache expira → 1000 requests batem no DB simultaneamente. Mitigação:
+
+```csharp
+// Single-flight com SemaphoreSlim por chave (in-process)
+private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+
+public async Task<T> GetOrAddAsync<T>(string key, Func<Task<T>> factory, TimeSpan ttl)
+{
+    if (await _cache.GetAsync<T>(key) is { } cached) return cached;
+    
+    var sem = _locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+    await sem.WaitAsync();
+    try
+    {
+        if (await _cache.GetAsync<T>(key) is { } reChecked) return reChecked;
+        var fresh = await factory();
+        await _cache.SetAsync(key, fresh, ttl);
+        return fresh;
+    }
+    finally { sem.Release(); }
+}
+```
+
+Distribuído? **Redis distributed lock** (RedLock) ou **probabilistic early refresh**.
+
+#### Cache Invalidation por Evento
+Cache-aside leak: dado mudou no DB, cache continua antigo até TTL. Solução: invalidar via evento.
+
+```csharp
+public class ProductUpdatedHandler(IDistributedCache cache)
+    : INotificationHandler<ProductUpdatedEvent>
+{
+    public Task Handle(ProductUpdatedEvent evt, CancellationToken ct)
+        => cache.RemoveAsync($"product:{evt.ProductId}", ct);
+}
+```
+
+### A2. Output Caching (.NET 7+)
+
+Substitui o velho Response Caching:
+
+```csharp
+builder.Services.AddOutputCache(opt =>
+{
+    opt.AddPolicy("Catalog", b => b
+        .Expire(TimeSpan.FromMinutes(10))
+        .Tag("products")
+        .SetVaryByQuery("page", "size"));
+});
+
+app.MapGet("/products", ...).CacheOutput("Catalog");
+
+// Invalidar por tag
+await outputCacheStore.EvictByTagAsync("products", ct);
+```
+
+### A3. OpenTelemetry — Semantic Conventions
+
+Usar **nomes padronizados** (CNCF) garante interop com qualquer backend:
+
+```csharp
+activity?.SetTag("http.request.method", "POST");
+activity?.SetTag("http.response.status_code", 201);
+activity?.SetTag("db.system", "mssql");
+activity?.SetTag("messaging.system", "rabbitmq");
+activity?.SetTag("messaging.destination.name", "orders.confirmed");
+```
+
+Lista completa: [opentelemetry.io/docs/specs/semconv](https://opentelemetry.io/docs/specs/semconv/).
+
+### A4. Tail Sampling vs Head Sampling
+
+- **Head:** decide no início do trace (mantém X%). Perde traces de erro raros.
+- **Tail:** decide no fim. Pode manter **100% dos traces com erro ou alta latência** + 1% dos sucessos rápidos. Requer OTel Collector com tail sampling processor.
+
+Padrão produção: tail sampling.
+
+### A5. Correlation ID End-to-End
+
+W3C Trace Context (`traceparent` header) é nativo em ASP.NET Core 10. Propaga automaticamente em HttpClient. Para mensageria, MassTransit propaga via headers RabbitMQ.
+
+```csharp
+// Logar TraceId em todo log
+builder.Host.UseSerilog((ctx, lc) => lc
+    .Enrich.WithProperty("Service", "Orders")
+    .Enrich.WithSpan()              // adiciona TraceId, SpanId
+    .WriteTo.Seq("http://seq:5341"));
+```
+
+### A6. Métricas Customizadas via `Meter`
+
+```csharp
+private static readonly Meter Meter = new("OrderFlow.Orders", "1.0");
+private static readonly Histogram<double> OrderTotal = 
+    Meter.CreateHistogram<double>("orders.total.amount", "BRL");
+
+// No handler
+OrderTotal.Record(order.Total.Amount, new TagList { { "customer.tier", customer.Tier } });
+```
+
+Grafana mostra distribuição de tickets por tier.
+
+### 💼 Perguntas Sênior
+
+**"Como evitar Cache Stampede?"** — Single-flight (in-process: SemaphoreSlim por chave; distribuído: Redis lock). Alternativa: **probabilistic early refresh** — cada request perto do TTL tem probabilidade crescente de regenerar antecipadamente, espalhando carga.
+
+**"Diferencie head e tail sampling em distributed tracing."** — Head: decide manter trace no início (perde anomalias raras). Tail: decide no fim, baseado em duração/erro/atributos — mantém 100% dos problemas + amostra dos sucessos. Tail é o padrão profissional; exige OTel Collector.
+
+---
+
+> **Próximo passo:** Avance para `fase-07-gateway-docker.md`.
+>
+> 🚀 **Trilha Sênior:** [`fase-14-feature-flags-sre.md`](./fase-14-feature-flags-sre.md) — SLO/SLI, RED/USE, Error Budget.

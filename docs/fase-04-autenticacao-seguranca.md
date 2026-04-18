@@ -83,6 +83,8 @@ src/BuildingBlocks/
 
 ### ADR-009: Identity como Serviço Separado
 
+> 🧠 **Analogia — O Cartório de Identidade:** Pense no Identity API como um **cartório**: ele é o único lugar que emite documentos (tokens). A padaria (Orders API), a farmácia (Catalog API) e o banco (Gateway) não emitem RG — eles apenas **verificam se o documento é autêntico** (validam a assinatura do JWT). Se o cartório cair, ninguém consegue se registrar, mas quem já tem RG válido continua circulando normalmente até o documento expirar.
+
 **Contexto:** Autenticação pode ser centralizada ou distribuída.
 
 **Decisão:** Identity API como microserviço separado que emite tokens JWT. Outros serviços apenas validam o token (não precisam de conexão com banco de identidade).
@@ -113,6 +115,8 @@ src/BuildingBlocks/
 
 ### ADR-010: Refresh Token Rotation
 
+> 🧠 **Analogia — O Crachá Temporário:** Imagine que você entra num prédio corporativo. Na portaria, te dão um crachá de visitante que **expira em 15 minutos** (Access Token). Quando expira, você volta à portaria com seu **cartão de registro** (Refresh Token) e recebe um crachá novo. O cartão antigo é imediatamente **cancelado** — se alguém o roubou e tenta usar, o sistema detecta e revoga **todos** os cartões seus, te forçando a refazer login. Isso é Refresh Token Rotation: cada uso gera um novo token e invalida o anterior.
+
 **Contexto:** Access tokens JWT são stateless mas não podem ser revogados. Se roubado, o atacante tem acesso até expirar.
 
 **Decisão:** Access token com vida curta (15 min) + Refresh token com vida longa (7 dias) + rotação a cada uso.
@@ -133,6 +137,8 @@ ALERTA: Possível token theft → Revoga TODOS os tokens do usuário
 ## 3. Conceitos de Segurança
 
 ### JWT — Como Funciona
+
+> 🧠 **Analogia — A Pulseira do Festival:** Num festival de música, quando você compra ingresso VIP, recebe uma **pulseira** com seu nome, tipo de acesso e data de validade impressos — tudo visível. A pulseira tem um selo hologramado que só o festival sabe fazer (assinatura). Qualquer segurança do evento consegue verificar se a pulseira é legítima **olhando o selo**, sem ligar pra bilheteria. É exatamente assim que JWT funciona: o payload (nome, role, expiração) é visível; a assinatura garante que ninguém adulterou; e qualquer API valida localmente sem consultar o Identity.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -1225,6 +1231,8 @@ public class AuthControllerTests : IClassFixture<WebApplicationFactory<Program>>
 
 ## 7. Checkpoint
 
+> 💡 **Por que isso importa no dia-a-dia?** Segurança não é feature — é **requisito não-negociável**. Uma falha de autenticação não gera um bug report; gera uma **manchete no jornal**. Sêniores entendem: cada endpoint público é uma porta, e cada token é uma chave. A pergunta não é "meu sistema funciona?" — é "meu sistema funciona **mesmo quando alguém tenta quebrá-lo**?"
+
 ### Validação Completa
 
 - [ ] **Projeto criado:** `OrderFlow.Identity.Api`
@@ -1302,4 +1310,87 @@ curl -X POST http://localhost:5001/api/auth/login \
 
 ---
 
-> **Próximo passo:** Avance para `fase-05-mensageria-async.md` para implementar RabbitMQ com MassTransit, Outbox Pattern e o Notification Worker.
+## 🔬 Aprofundamento Sênior
+
+### A1. JWT Artesanal vs IdP — Limites do Que Você Implementou
+
+A Fase 04 é didática. Para produção real, **migre para Duende IdentityServer** ([Fase 12](./fase-12-oauth2-identityserver.md)). Limitações do JWT artesanal:
+
+| Problema | Impacto |
+|---|---|
+| Sem revogação real | Token roubado vale por 15min |
+| HS256 (chave compartilhada) | Cada serviço precisa da chave (vazamento = comprometimento total) |
+| Sem rotação de chaves | Comprometeu? Reset do mundo |
+| Sem federação | Impossível "Login com Google" |
+| Sem JWKS endpoint | Cada serviço hard-codes validação |
+
+**Mitigação no curto prazo:** RS256 (chave assimétrica) + JWKS endpoint local + Refresh Rotation.
+
+### A2. OWASP Top 10 — Mapeamento Concreto
+
+| Risco | Onde Tratar no OrderFlow |
+|---|---|
+| **A01 Broken Access Control** | Authorization Policies + Resource-based handlers (não só `[Authorize]`) |
+| **A02 Cryptographic Failures** | HTTPS only; secrets em Key Vault; senhas via `IPasswordHasher` (PBKDF2/Argon2) |
+| **A03 Injection** | EF Core/Dapper parametrizado SEMPRE; validação de input via FluentValidation |
+| **A04 Insecure Design** | Threat modeling antes de feature; ADRs documentando trade-offs de segurança |
+| **A05 Security Misconfiguration** | Headers (X-Frame-Options, CSP); diretórios fora da app root; remover Server header |
+| **A06 Vulnerable Components** | `dotnet list package --vulnerable`; Dependabot; SBOM no CI |
+| **A07 Identification & Auth Failures** | Refresh Rotation; rate limit no /login; account lockout; MFA (Fase 12) |
+| **A08 Software & Data Integrity** | Verify package signing; CI assina artifacts; supply chain (SLSA) |
+| **A09 Logging Failures** | Serilog estruturado + retenção; **NUNCA** logar tokens, senhas, dados PII |
+| **A10 SSRF** | Lista branca de URLs em integrações; validar redirect URIs |
+
+### A3. Mass Assignment — Vulnerabilidade Comum em .NET
+
+```csharp
+// ❌ Vulnerável: usuário pode setar Role=Admin no body
+public record CreateUserCommand(string Email, string Password, string Role);
+
+// ✅ DTO com APENAS campos permitidos
+public record CreateUserCommand(string Email, string Password);
+// Role é setado pelo servidor, nunca vem do client
+```
+
+### A4. IDOR (Insecure Direct Object Reference)
+
+```csharp
+// ❌ GET /orders/{id} sem checar ownership
+app.MapGet("/orders/{id}", (Guid id) => repo.GetAsync(id));
+
+// ✅ Filtra por usuário
+app.MapGet("/orders/{id}", (Guid id, ClaimsPrincipal user) =>
+{
+    var userId = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    return repo.GetByIdAndUserAsync(id, userId);  // SQL filtra
+});
+```
+
+### A5. Security Headers (ASP.NET Core)
+
+```csharp
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    ctx.Response.Headers.Append("X-Frame-Options", "DENY");
+    ctx.Response.Headers.Append("Referrer-Policy", "no-referrer");
+    ctx.Response.Headers.Append("Content-Security-Policy", "default-src 'self'");
+    await next();
+});
+```
+
+### A6. Token Binding e DPoP
+
+Futuro da segurança JWT: **DPoP** (Demonstrating Proof-of-Possession) — token só vale se o cliente provar posse de chave privada. Mitiga roubo de token. Suportado por Duende IS 7+.
+
+### 💼 Perguntas Sênior
+
+**"Como você protege contra credential stuffing?"** — (1) Rate limiting agressivo no /login (5 tentativas / 5 min por IP). (2) Account lockout temporário após N falhas. (3) MFA obrigatório para admins. (4) HaveIBeenPwned API check de senha no signup. (5) Captcha após 3 falhas.
+
+**"O que é DPoP e por que importa?"** — Demonstrating Proof-of-Possession — JWT vinculado a uma chave que só o cliente possui. Atacante que rouba o JWT não consegue usar (não tem a chave). Mitiga o risco de tokens stateless. Suportado em Duende IS 7+.
+
+---
+
+> **Próximo passo:** Avance para `fase-05-mensageria-async.md`.
+>
+> 🚀 **Trilha Sênior:** [`fase-12-oauth2-identityserver.md`](./fase-12-oauth2-identityserver.md) — substitua o JWT artesanal por Duende IdentityServer real.

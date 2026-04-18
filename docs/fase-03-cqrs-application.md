@@ -115,6 +115,8 @@ src/Services/Orders/
 
 ### ADR-006: CQRS — Separação de Leitura e Escrita
 
+> 🧠 **Analogia — O Balcão da Biblioteca:** Em uma biblioteca, você tem dois balcões diferentes: um para **devolver/reservar livros** (escrita) e outro para **consultar o catálogo** (leitura). O balcão de devolução precisa verificar multas, atualizar o sistema, carimbar o livro — é lento e cuidadoso. O balcão de consulta só precisa de uma tela com busca rápida — não mexe em nada, só lê. **CQRS é essa separação**: quem escreve (Command) tem um caminho complexo com domínio rico e validações; quem lê (Query) tem um caminho otimizado para velocidade.
+
 **Contexto:** Reads e Writes têm necessidades diferentes: escrita precisa de validação e domínio rico; leitura precisa de performance e DTOs planos.
 
 **Decisão:** Usar MediatR para rotear Commands (escrita via EF Core) e Queries (leitura via Dapper).
@@ -150,6 +152,8 @@ src/Services/Orders/
 
 ### ADR-007: Result Pattern
 
+> 🧠 **Analogia — O Envelope de Resposta:** Quando você envia um formulário para um órgão público, o retorno vem num envelope. Dentro pode ter: (a) o documento aprovado (✅ sucesso), ou (b) uma carta explicando por que foi negado e o que corrigir (❌ erro tipado). Você **abre o envelope e verifica**, sem surpresas. Usar `throw new Exception("not found")` é como o órgão jogar o formulário na sua cara — imprevisível, caro (stack trace) e impossível de tratar elegantemente. O `Result<T>` é o envelope: sempre tem uma resposta clara.
+
 **Contexto:** Usar exceptions para fluxo de controle (ex: "order not found") é caro e inelegante.
 
 **Decisão:** Commands e Queries retornam `Result<T>` com erros tipados.
@@ -173,6 +177,8 @@ public async Task<Result<OrderDetailDto>> Handle(GetOrderByIdQuery query, Cancel
 
 ### ADR-008: Pipeline Behaviors
 
+> 🧠 **Analogia — O Controle de Segurança do Aeroporto:** Quando você embarca num avião, passa por uma sequência fixa: (1) **check-in** — registram que você apareceu (logging); (2) **detector de metais** — barram itens proibidos antes de entrar (validation); (3) **portão de embarque** — só aqui você realmente entra no avião (transaction + handler). Se você não passa no detector, nem chega ao portão — economia de tempo e recursos. Se inverter a ordem (embarcar antes de verificar), é desastre. Pipeline Behaviors são esses checkpoints em sequência.
+
 **Contexto:** Validação, logging e transações são cross-cutting concerns — repetir em cada handler é DRY violation.
 
 **Decisão:** Usar `IPipelineBehavior<TRequest, TResponse>` do MediatR.
@@ -193,6 +199,8 @@ Request → [Logging] → [Validation] → [Transaction] → Handler → Respons
 ## 3. Conceitos Chave
 
 ### 3.1 MediatR — Mediator Pattern
+
+> 🧠 **Analogia — A Recepcionista do Hotel:** Imagine que você chega num hotel e precisa de várias coisas: quarto limpo, transfer para o aeroporto, reserva no restaurante. Você **não** liga para a camareira, o motorista e o chef diretamente — você fala com a **recepcionista** e ela roteia cada pedido para o responsável certo. O MediatR é essa recepcionista: o Controller faz um `Send(pedido)` e o MediatR descobre qual Handler deve atender. O Controller nunca sabe (nem precisa saber) quem resolve — isso é **desacoplamento**.
 
 O MediatR implementa o **Mediator Pattern**: objetos não se comunicam diretamente; tudo passa por um mediador central.
 
@@ -1742,6 +1750,8 @@ public class ValidationBehaviorTests
 
 ## 7. Checkpoint
 
+> 💡 **Por que isso importa no dia-a-dia?** A Application Layer é o **maestro da orquestra** — ela não toca nenhum instrumento (não tem lógica de domínio nem de infra), mas coordena quem toca o quê e quando. Se o maestro erra a entrada, a sinfonia vira cacofonia: validação rodando depois da transação, domain events disparando antes do commit, erros silenciosos. Sêniores criam Application Layers que são **previsíveis e auditáveis** — você olha o pipeline e sabe exatamente o que acontece com cada request.
+
 ### Validação Completa
 
 - [ ] **Projetos criados:** Application, Infrastructure, Api, Application.Tests
@@ -1820,4 +1830,117 @@ curl -X POST http://localhost:5000/api/orders \
 
 ---
 
-> **Próximo passo:** Avance para `fase-04-autenticacao-seguranca.md` para implementar Identity API com JWT, refresh tokens e authorization policies.
+## 🔬 Aprofundamento Sênior
+
+### A1. Pipeline Behaviors Avançados
+
+MediatR pipelines = AOP elegante. Além de validação:
+
+#### Caching Behavior
+```csharp
+public sealed class CachingBehavior<TRequest, TResponse>(IDistributedCache cache)
+    : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : ICacheableQuery<TResponse>
+{
+    public async Task<TResponse> Handle(TRequest request,
+        RequestHandlerDelegate<TResponse> next, CancellationToken ct)
+    {
+        var cached = await cache.GetAsync<TResponse>(request.CacheKey, ct);
+        if (cached is not null) return cached;
+
+        var response = await next();
+        await cache.SetAsync(request.CacheKey, response, request.Ttl, ct);
+        return response;
+    }
+}
+```
+
+#### Retry Behavior (combina com Polly)
+#### Logging Behavior — log estruturado de toda Command
+#### Transaction Behavior — abre/commita/rollback automático
+
+### A2. Result Pattern — Sem Exceções para Fluxo
+
+```csharp
+public readonly record struct Result<T>(T? Value, Error? Error)
+{
+    public bool IsSuccess => Error is null;
+    public static Result<T> Success(T value) => new(value, null);
+    public static Result<T> Failure(Error error) => new(default, error);
+}
+
+// Handler
+public async Task<Result<OrderId>> Handle(CreateOrderCommand cmd, CancellationToken ct)
+{
+    if (await _customerExists(cmd.CustomerId, ct) is false)
+        return Result<OrderId>.Failure(Errors.CustomerNotFound);
+    // ... cria, salva
+    return Result<OrderId>.Success(order.Id);
+}
+
+// Endpoint mapeia Result → IResult
+result.Match(
+    success: id => Results.Created($"/orders/{id}", id),
+    failure: err => err.ToProblemDetails());
+```
+
+**Por quê:** exceções são caras (stack walk), pollutam logs, escondem fluxo. Result torna **fluxo esperado** explícito; exceções para **excepcional**.
+
+### A3. Wolverine — Alternativa Moderna ao MediatR
+
+[Wolverine](https://wolverinefx.io/) é um framework mais ambicioso:
+- Sem `IRequestHandler` — métodos públicos são handlers automáticos
+- Outbox e saga **embutidos**
+- Sem licença comercial (MediatR v12+ tem)
+- Source generators em vez de reflection
+
+Para projetos novos em 2026, considere. Trade-off: comunidade menor.
+
+### A4. Dapper Patterns Avançados
+
+#### Multi-Mapping (1 query → 2 objetos)
+```csharp
+var sql = @"SELECT o.*, c.* FROM Orders o JOIN Customers c ON o.CustomerId = c.Id WHERE o.Id = @id";
+var order = (await conn.QueryAsync<OrderDto, CustomerDto, OrderDto>(
+    sql, (o, c) => { o.Customer = c; return o; }, new { id }, splitOn: "Id")).First();
+```
+
+#### Streaming (não carrega tudo)
+```csharp
+await foreach (var row in conn.QueryUnbufferedAsync<OrderRow>(sql, ct))
+    yield return row;
+```
+
+#### Keyset Pagination — sempre prefira a OFFSET
+```sql
+-- ❌ OFFSET fica O(N) em páginas distantes
+SELECT * FROM Orders ORDER BY CreatedAt DESC OFFSET 100000 ROWS FETCH NEXT 20 ROWS ONLY;
+
+-- ✅ Keyset — usa índice, O(log N)
+SELECT * FROM Orders WHERE CreatedAt < @lastCreatedAt ORDER BY CreatedAt DESC FETCH NEXT 20 ROWS ONLY;
+```
+
+### A5. CQRS Avançado — Read Model Separado
+
+Quando query model fica muito diferente do write model, materialize **read model dedicado**:
+
+```
+Write model (SQL Orders + Items + ...) 
+   → eventos (OrderConfirmed, ItemAdded) 
+   → projector 
+   → read model (NoSQL OrderSummary plana, otimizada para listagem)
+```
+
+Vantagens: leitura instantânea (single document), escala independente. Desvantagem: eventual consistency.
+
+### 💼 Perguntas Sênior
+
+**"Quando vale separar read model fisicamente?"** — Quando query exige join de 5+ tabelas, agregações pesadas, ou diferentes APIs querem visões muito distintas. Sintoma: query tem 200 linhas de SQL com CTEs.
+
+**"Pipeline behaviors — qual ordem importa?"** — Logging > Transaction > Validation > Caching > Handler. Logging primeiro captura tudo (incluindo erros de validação); Transaction precede validação para que erros não façam rollback (não houve insert); Validação antes de Caching (não cacheia inválido); Caching antes do Handler.
+
+---
+
+> **Próximo passo:** Avance para `fase-04-autenticacao-seguranca.md` para implementar Identity API.
+>
+> 🚀 **Trilha Sênior relacionada:** [`fase-09-resiliencia-polly.md`](./fase-09-resiliencia-polly.md) — Polly behaviors em handlers.

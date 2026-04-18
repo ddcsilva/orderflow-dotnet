@@ -84,6 +84,8 @@ tests/
 
 ### 2.1 Rich Domain Model vs Anemic Domain Model
 
+> 🧠 **Analogia — O Robô vs O Funcionário:** Imagine dois caixas de supermercado. O **robô (anêmico)** é um braço mecânico que só segura produtos — precisa de um *operador externo* que diga "agora some o total", "agora verifique o estoque", "agora aplique o desconto". Se o operador erra a ordem, dá caos. O **funcionário (rico)** sabe suas regras: "só aceito cupom válido", "não vendo álcool sem RG", "calculo o troco automaticamente". Você diz "adiciona este produto" e ele *se vira*. **O modelo rico é o funcionário — dados + comportamento + regras, tudo junto.**
+
 **Anemic Domain Model (EVITAR):**
 ```csharp
 // ❌ Entidade anêmica — apenas dados, sem comportamento
@@ -143,7 +145,9 @@ public sealed class Order : AggregateRoot
 
 ### 2.2 Aggregate Boundaries
 
-**Regra:** Um Aggregate é o menor grupo de objetos que deve ser consistente juntos.
+> 🧠 **Analogia — A Caixa-Forte do Banco:** Um Aggregate é como uma **caixa-forte**: tudo lá dentro (notas, joias, documentos) é gerenciado como uma unidade. Você não tira uma nota sem passar pela porta da caixa-forte (o Aggregate Root). E você não mistura o conteúdo de duas caixas-fortes — cada uma tem seu próprio inventario, seu próprio cadeado, suas próprias regras.
+
+**Regra fundamental:** Um Aggregate é o menor grupo de objetos que deve ser consistente **juntos, na mesma transação**.
 
 No nosso caso:
 - **Order** é o Aggregate Root
@@ -158,6 +162,8 @@ Porque Product pertence ao Catalog (outro bounded context). No Orders, mantemos 
 
 ### 2.3 Domain Events vs Integration Events
 
+> 🧠 **Analogia — Grito na Sala vs Carta pelo Correio:** Um **Domain Event** é como gritar "o pedido foi criado!" dentro da mesma sala (mesmo processo, mesmo banco, mesma transação). Todos que estão ali ouvem instantâneamente. Um **Integration Event** é como enviar uma carta pelo correio para outro escritório (outro serviço, outro banco) — pode demorar, pode se perder, e o destinatário precisa confirmar recebimento. Domain Events são rápidos e confiáveis. Integration Events exigem **resiliência**: retry, idempotência, dead-letter queues.
+
 | Domain Events | Integration Events |
 |---------------|-------------------|
 | Dentro do bounded context | Entre bounded contexts / serviços |
@@ -168,6 +174,8 @@ Porque Product pertence ao Catalog (outro bounded context). No Orders, mantemos 
 **Nesta fase:** Criamos os Domain Events. Na Fase 5, transformamos os relevantes em Integration Events.
 
 ### 2.4 Value Object Equality
+
+> 🧠 **Analogia — A Nota de R$10:** Você pega duas notas de R$10 do bolso. Elas são *a mesma nota*? Não — cada uma tem um número de série diferente. Mas elas *valem a mesma coisa*? Sim! Para o seu pagamento, tanto faz qual nota você usa — elas são **intercambiáveis pelo valor**. Isso é um Value Object: **não tem identidade própria, só importa o que ele carrega**. Dois `Money(100, "BRL")` são iguais porque representam o mesmo valor. Já uma `Entity` como Order tem identidade — dois pedidos de R$100 são pedidos *diferentes*.
 
 Value Objects são comparados **por valor**, não por **referência**. Dois `Money.FromDecimal(100m, "BRL")` são iguais.
 
@@ -183,6 +191,8 @@ Entities são comparadas por **identidade** (Id). Dois orders com dados idêntic
 ---
 
 ## 3. Conceitos de DDD
+
+> 💡 **Antes de mergulhar no código:** DDD não é sobre patterns — é sobre **falar a língua do negócio** no código. Se o Product Owner diz "o cliente *cancela* o pedido", seu código deve ter `order.Cancel(reason)`, não `orderService.UpdateStatus(order, "cancelled")`. Os patterns abaixo (Aggregate, Value Object, Domain Event) são **ferramentas** para construir esse código expressivo.
 
 ### Aggregate Root
 
@@ -930,6 +940,8 @@ public interface IOrderRepository : IRepository<Order>
 
 ## 6. Testes
 
+> 🧠 **Analogia — O Crash Test do Carro:** Testes de domínio são como **crash tests** — você coloca o carro (aggregate) em situações extremas (adicionar item em pedido cancelado, criar Money com valor negativo) e verifica se as proteções funcionam. Um carro sem crash test pode parecer perfeito, mas ninguém confia nele. Domínio sem testes? Mesma coisa. A beleza dos testes de domínio é que são **os mais rápidos e baratos** de todo o sistema — sem banco, sem HTTP, sem Docker. Rodam em milissegundos.
+
 ### 6.1 Filosofia de Testes do Domínio
 
 | Princípio | Aplicação |
@@ -1417,6 +1429,8 @@ public class AddressTests
 
 ## 7. Checkpoint
 
+> 💡 **Por que isso importa no dia-a-dia?** O domínio é o **coração** do sistema — é onde mora o dinheiro. Se o domínio permite que um pedido seja confirmado sem itens, ou que o total fique negativo, nenhuma camada de validação na API vai salvar você. Sêniores dizem: *"Se o domínio está correto, o resto é encanamento. Se o domínio está errado, o resto é ilusão."*
+
 ### Como Validar que a Fase 2 Está Completa
 
 - [ ] **Projetos criados:** `OrderFlow.Orders.Domain` e `OrderFlow.Orders.Domain.Tests`
@@ -1483,4 +1497,110 @@ cat src/Services/Orders/OrderFlow.Orders.Domain/OrderFlow.Orders.Domain.csproj
 
 ---
 
-> **Próximo passo:** Avance para `fase-03-cqrs-application.md` para implementar CQRS com MediatR, os handlers de Commands e Queries, e os endpoints da API.
+## 🔬 Aprofundamento Sênior
+
+### A1. Aggregate Design — Regras Não Óbvias
+
+**Regra:** *"1 transação = 1 aggregate."*
+
+Se você precisa atualizar 2 aggregates atomicamente, **eles deveriam ser um só** — ou você precisa de **eventual consistency** entre eles via Domain Event.
+
+```csharp
+// ❌ Anti-padrão: atualizar Order e Inventory na mesma transação
+public async Task ConfirmAsync(Order order)
+{
+    order.Confirm();
+    inventory.Decrement(order.Items);  // ← outro aggregate
+    await _db.SaveChangesAsync();
+}
+
+// ✅ Correto: cada aggregate em sua transação, conectado por evento
+public async Task ConfirmAsync(Order order)
+{
+    order.Confirm();   // emite OrderConfirmedEvent
+    await _db.SaveChangesAsync();
+}
+// InventoryService recebe OrderConfirmedEvent e decrementa em SUA transação
+```
+
+### A2. Optimistic Concurrency em Aggregates
+
+Dois usuários abrindo o mesmo pedido — quem confirma primeiro vence:
+
+```csharp
+public class Order : AggregateRoot
+{
+    public int Version { get; private set; }   // incrementa a cada mudança
+    
+    public void Confirm()
+    {
+        if (Status != OrderStatus.Pending)
+            throw new DomainException("Order cannot be confirmed in current state");
+        Status = OrderStatus.Confirmed;
+        Version++;
+        Raise(new OrderConfirmedEvent(Id));
+    }
+}
+
+// EF Core: builder.Property(o => o.Version).IsConcurrencyToken();
+// Conflito → DbUpdateConcurrencyException → API retorna 409 Conflict
+```
+
+### A3. Domain Events vs Integration Events — Diferença Estrita
+
+| | Domain Event | Integration Event |
+|---|---|---|
+| Audiência | **Dentro** do mesmo bounded context | **Outros** bounded contexts |
+| Transporte | MediatR (in-process) | Broker (RabbitMQ, Kafka) |
+| Disparo | Síncrono na transação | Assíncrono pós-commit |
+| Acoplamento | Forte com domínio | Fraco — versionável |
+| Exemplo | `OrderConfirmedEvent` (interno) | `OrderConfirmedIntegrationEvent` (Notification ouve) |
+
+> **Regra:** nunca publique Domain Event fora do processo. Crie um handler que **traduz** Domain → Integration Event antes de publicar no broker.
+
+### A4. Anti-Corruption Layer
+
+Quando integrar com legado ou serviço externo com modelo incompatível, **não polua seu domínio**. Use ACL:
+
+```csharp
+public class LegacyCrmAdapter : ICustomerProvider
+{
+    public async Task<Customer> GetAsync(Guid id)
+    {
+        var raw = await _legacy.GET(id);   // modelo legado feio
+        return new Customer(   // tradução para SEU modelo
+            CustomerId.From(raw.cust_no),
+            new CustomerName(raw.fname, raw.lname));
+    }
+}
+```
+
+### A5. Specification Pattern
+
+Query complexa reusável sem vazar para Application:
+
+```csharp
+public sealed class HighValueOrderSpec : Specification<Order>
+{
+    public HighValueOrderSpec(decimal threshold)
+        : base(o => o.Total.Amount > threshold && o.Status == OrderStatus.Confirmed) { }
+}
+
+var orders = await _repo.FindAsync(new HighValueOrderSpec(10_000m));
+```
+
+### A6. Event Sourcing — Preview
+
+Em vez de salvar o **estado**, salva-se a sequência de **eventos**. Estado = `reduce(eventos)`. Aprofundamento completo na [Fase 13](./fase-13-grpc-kafka-eventsourcing.md#6-event-sourcing--conceito).
+
+### 💼 Perguntas Sênior
+
+**"Como você modelaria 'cada item do pedido pode ter desconto independente'?"** — `OrderItem` como entidade dentro do aggregate `Order`, com seu próprio `Discount` value object. `Order.AddItem(productId, qty, discount)` valida invariantes (desconto máximo, política de combinação). Nunca expor `Items` mutável — encapsular.
+
+**"Como dois aggregates ficam consistentes sem 2PC?"** — Eventual consistency via Domain Event publicado pós-commit. Aggregate A salva, evento sai (Outbox), Aggregate B em outro processo recebe e atualiza. Aceita janela de inconsistência (ms a s) em troca de escalabilidade e resiliência.
+
+---
+
+> **Próximo passo:** Avance para `fase-03-cqrs-application.md` para implementar CQRS com MediatR.
+>
+> 🚀 **Trilha Sênior relacionada:** [`fase-13-grpc-kafka-eventsourcing.md`](./fase-13-grpc-kafka-eventsourcing.md) — Event Sourcing como modelo alternativo.

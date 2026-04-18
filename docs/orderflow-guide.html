@@ -481,9 +481,14 @@
   <!-- ============================================================ -->
   <!-- ROADMAP VISUAL                                               -->
   <!-- ============================================================ -->
-  <h3>🗺️ Jornada de Aprendizado</h3>
-  <p>O OrderFlow é construído em 8 fases progressivas. Cada fase adiciona uma camada arquitetural ao sistema.</p>
+  <h3>🗺️ Jornada de Aprendizado — 15 Fases</h3>
+  <p>O OrderFlow é construído em <strong>15 fases progressivas</strong>, divididas em duas trilhas alinhadas às exigências de mercado .NET 2026:</p>
+  <ul>
+    <li><strong>Trilha Pleno (Fases 01–08):</strong> fundação arquitetural — Clean, DDD, CQRS, Auth, Mensageria, Observabilidade, Gateway, CI/CD.</li>
+    <li><strong>Trilha Sênior (Fases 09–15):</strong> resiliência, performance, K8s, OAuth2 real, gRPC/Kafka/ES, SRE/Feature Flags, IA generativa.</li>
+  </ul>
 
+  <h4 style="margin-top:2rem;color:var(--primary);font-family:var(--font-display);">🎯 Trilha Pleno</h4>
   <div class="roadmap">
     <div class="roadmap-item">
       <div class="step">01</div>
@@ -525,6 +530,50 @@
       <div class="topic">CI/CD</div>
       <div class="tech">Actions · Azure · Bicep</div>
     </div>
+  </div>
+
+  <h4 style="margin-top:3rem;color:var(--accent);font-family:var(--font-display);">🚀 Trilha Sênior</h4>
+  <div class="roadmap">
+    <div class="roadmap-item" style="border-color:rgba(167,139,250,0.3);">
+      <div class="step" style="color:var(--accent);">09</div>
+      <div class="topic">Resiliência</div>
+      <div class="tech">Polly v8 · Circuit Breaker · Hedging</div>
+    </div>
+    <div class="roadmap-item" style="border-color:rgba(167,139,250,0.3);">
+      <div class="step" style="color:var(--accent);">10</div>
+      <div class="topic">Performance</div>
+      <div class="tech">Span · Channels · BenchmarkDotNet · AOT</div>
+    </div>
+    <div class="roadmap-item" style="border-color:rgba(167,139,250,0.3);">
+      <div class="step" style="color:var(--accent);">11</div>
+      <div class="topic">Kubernetes</div>
+      <div class="tech">K8s · Helm · KEDA · Service Mesh</div>
+    </div>
+    <div class="roadmap-item" style="border-color:rgba(167,139,250,0.3);">
+      <div class="step" style="color:var(--accent);">12</div>
+      <div class="topic">OAuth2 / OIDC</div>
+      <div class="tech">Duende IS 7 · PKCE · Refresh Rotation</div>
+    </div>
+    <div class="roadmap-item" style="border-color:rgba(167,139,250,0.3);">
+      <div class="step" style="color:var(--accent);">13</div>
+      <div class="topic">gRPC · Kafka · ES</div>
+      <div class="tech">Protobuf · Event Sourcing · CDC</div>
+    </div>
+    <div class="roadmap-item" style="border-color:rgba(167,139,250,0.3);">
+      <div class="step" style="color:var(--accent);">14</div>
+      <div class="topic">SRE · Feature Flags</div>
+      <div class="tech">SLO/SLI · RED/USE · Pact · Game Days</div>
+    </div>
+    <div class="roadmap-item" style="border-color:rgba(167,139,250,0.3);">
+      <div class="step" style="color:var(--accent);">15</div>
+      <div class="topic">IA Generativa</div>
+      <div class="tech">Semantic Kernel · RAG · AI Gateway</div>
+    </div>
+  </div>
+
+  <div class="callout callout--note" style="margin-top:1.5rem;">
+    <div class="callout-label">📊 Cobertura de mercado</div>
+    <p>As Fases 09–15 cobrem os tópicos cobrados em <strong>vagas Pleno+/Sênior em 2026</strong>: alta resiliência, performance moderna (.NET 8/10), Kubernetes, IdP profissional, mensageria avançada, práticas SRE e integração com IA. Veja a <strong>matriz de 58 competências</strong> em <code>00-visao-geral.md</code>.</p>
   </div>
 
   <!-- ============================================================ -->
@@ -1371,7 +1420,7 @@
 
     <div class="callout callout--deep">
       <div class="callout-label">📚 Documentação Completa</div>
-      <p>Este guia é um resumo visual. Para implementação passo-a-passo com código completo, consulte os 9 documentos na pasta <code>docs/</code>: <code>00-visao-geral.md</code> até <code>fase-08-cicd-cloud.md</code>. Cada fase inclui learning objectives, artefatos criados e perguntas de entrevista com respostas articuladas (~40 perguntas no total).</p>
+      <p>Este guia é um resumo visual. Para implementação passo-a-passo com código completo, consulte os <strong>16 documentos</strong> na pasta <code>docs/</code>: <code>00-visao-geral.md</code> até <code>fase-15-ai-integration.md</code>. As Fases 01–08 formam a <strong>Trilha Pleno</strong>; as Fases 09–15 formam a <strong>Trilha Sênior</strong>, alinhada às exigências de vagas .NET 2026 (Polly v8, K8s, Duende IS, gRPC, Kafka, Event Sourcing, SRE, IA generativa). Cada fase inclui learning objectives, artefatos criados, código de produção e perguntas de entrevista com respostas articuladas (~100 perguntas no total).</p>
     </div>
   </section>
 

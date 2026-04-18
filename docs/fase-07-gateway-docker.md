@@ -70,6 +70,8 @@ tests/
 
 ### ADR-017: YARP como API Gateway
 
+> 🧠 **Analogia — O Concierge do Hotel:** Imagine um hotel de luxo com vários serviços: restaurante, spa, business center. O hóspede não precisa saber onde fica cada um, nem como chegar — ele fala com o **concierge** na recepção, que encaminha cada pedido para o lugar certo. O concierge também faz triagem: verifica se o hóspede é VIP (autenticação), limita quantos pedidos por hora (rate limiting) e pode até traduzir o pedido se necessário (transforms). **YARP é o concierge**: um ponto único de entrada que roteia, protege e observa todo o tráfego.
+
 **Contexto:** Precisamos de um ponto único de entrada para os clientes, com routing para os microserviços.
 
 **Decisão:** YARP (Yet Another Reverse Proxy) da Microsoft, rodando como um ASP.NET Core app.
@@ -91,6 +93,8 @@ Client ──▶ YARP Gateway (:8080)
 - HTTP/2 e HTTP/3
 
 ### ADR-018: Docker Multi-stage Builds
+
+> 🧠 **Analogia — Fazer a Mala de Viagem:** Quando você cozinha em casa, precisa da cozinha inteira: fogão, panelas, ingredientes, especiarias (SDK ~700MB). Mas quando vai viajar, só leva a marmita pronta (runtime ~85MB). O multi-stage build é isso: o primeiro estágio (SDK) *cozinha* a aplicação; o segundo estágio (runtime) *empacota só o prato pronto*. Resultado: imagem de produção 6x menor, sem compilador, sem código-fonte, sem ferramentas de build — menos superfície de ataque, deploy mais rápido.
 
 **Decisão:** Usar multi-stage builds para imagens mínimas em produção.
 
@@ -125,6 +129,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
 ### YARP — Como Funciona
 
+> 💡 **Visão geral:** YARP funciona com dois conceitos centrais: **Routes** ("quando a URL bater com esse padrão, encaminhe para...") e **Clusters** ("...este grupo de servidores"). Um Route casa com o request, um Cluster define para onde mandar. Transforms permitem modificar headers, paths e query strings no caminho. Pense em Routes como as placas de sinalização e Clusters como os destinos.
+
 ```
 ┌──────────────────────────────────────────────────┐
 │                YARP Gateway                      │
@@ -148,6 +154,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 ```
 
 ### Docker Networking
+
+> 🧠 **Analogia — O Condomínio Fechado:** Docker networks são como um condomínio: todos os moradores (containers) dentro do condomínio (network) se enxergam pelo nome (DNS: `orders-api`, `redis`, `sqlserver`). Quem está fora do muro não consegue entrar diretamente — só pela portaria (portas expostas). Containers em networks diferentes não se vêem, mesmo estando na mesma máquina física. Isso é **isolamento de rede**.
 
 ```
 ┌─────────────── Docker Network: orderflow-net ──────────────────┐
@@ -928,6 +936,8 @@ public class OrdersApiContainerTests : IAsyncLifetime
 
 ## 7. Checkpoint
 
+> 💡 **Por que isso importa no dia-a-dia?** O Gateway + Docker é onde seu projeto sai do "funciona na minha máquina" para **"funciona em qualquer máquina"**. Na entrevista sênior, mostrar um `docker compose up` que sobe 5 serviços + infra em 30 segundos demonstra que você pensa em **operação**, não só em código. E o Gateway mostra que você entende **arquitetura distribuída**: ponto único de entrada, cross-cutting concerns centralizados, zero configuração nos clientes.
+
 ### Validação Completa
 
 - [ ] **YARP Gateway funcional:** Routing para todos os serviços
@@ -1015,4 +1025,113 @@ $$\text{Redução} = 1 - \frac{\text{Imagem runtime (\~80MB)}}{\text{Imagem SDK 
 
 ---
 
-> **Próximo passo:** Avance para `fase-08-cicd-cloud.md` para implementar CI/CD com GitHub Actions e deploy na Azure.
+## 🔬 Aprofundamento Sênior
+
+### A1. YARP Avançado — Transforms e Custom Routing
+
+```json
+{
+  "ReverseProxy": {
+    "Routes": {
+      "orders-route": {
+        "ClusterId": "orders-cluster",
+        "Match": { "Path": "/api/orders/{**catch-all}" },
+        "Transforms": [
+          { "PathPattern": "/{**catch-all}" },
+          { "RequestHeader": "X-Forwarded-User", "Set": "{user}" },
+          { "ResponseHeaderRemove": "Server" }
+        ]
+      }
+    },
+    "Clusters": {
+      "orders-cluster": {
+        "LoadBalancingPolicy": "PowerOfTwoChoices",
+        "HealthCheck": {
+          "Active": { "Enabled": true, "Interval": "00:00:10", "Path": "/health/ready" }
+        },
+        "Destinations": {
+          "orders-1": { "Address": "http://orders-api:8080" }
+        }
+      }
+    }
+  }
+}
+```
+
+**LoadBalancing:** `PowerOfTwoChoices` (escolhe 2 random, pega o menos carregado) é hoje o melhor algoritmo geral — mais distribuído que Round Robin, menos sobrecarga que Least Requests global.
+
+### A2. gRPC Routing no YARP
+
+YARP roteia gRPC nativamente — **HTTP/2 obrigatório**. Cluster com `HttpRequest.Version: 2`. Útil quando Gateway é também o limite de exposição interna.
+
+### A3. Docker — Hardening de Imagens
+
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS base
+
+# 1. Não-root
+RUN addgroup -S app && adduser -S app -G app
+USER app
+WORKDIR /app
+
+# 2. Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
+  CMD wget --quiet --tries=1 --spider http://localhost:8080/health/live || exit 1
+
+# 3. Read-only root filesystem (compose/k8s)
+# securityContext: { readOnlyRootFilesystem: true }
+
+# 4. Drop capabilities
+# securityContext: { capabilities: { drop: ["ALL"] } }
+
+# 5. Sem shell em imagem final (alpine ou distroless)
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS runtime
+# chiseled = sem shell, sem package manager — superfície de ataque mínima
+```
+
+### A4. Image Scanning no CI
+
+```yaml
+- name: Scan image with Trivy
+  uses: aquasecurity/trivy-action@master
+  with:
+    image-ref: ghcr.io/orderflow/orders:${{ github.sha }}
+    severity: 'CRITICAL,HIGH'
+    exit-code: 1
+```
+
+Falha o build se houver CVE crítico. Combine com **Dependabot** para PRs automáticos de dep updates.
+
+### A5. Testcontainers Patterns
+
+#### Compartilhar container entre testes (CollectionFixture)
+```csharp
+[CollectionDefinition("sql")]
+public class SqlCollection : ICollectionFixture<SqlContainerFixture> { }
+
+[Collection("sql")]
+public class OrderRepoTests(SqlContainerFixture sql) { ... }
+```
+
+#### Snapshot do banco entre testes
+```csharp
+// Antes do teste: BACKUP
+await conn.ExecuteAsync("BACKUP DATABASE OrdersDb TO DISK = '/tmp/snap.bak'");
+// Depois: RESTORE — muito mais rápido que recriar
+```
+
+### A6. Distroless / Chiseled Images
+
+Microsoft lançou imagens **chiseled** (.NET 8+): sem shell, sem package manager, ~30MB. Reduz superfície de ataque drasticamente. Default para produção em 2026.
+
+### 💼 Perguntas Sênior
+
+**"Qual algoritmo de load balancing escolher?"** — `PowerOfTwoChoices` é o sweet spot moderno: escolhe 2 destinos random, pega o menos carregado. Distribuição quase ótima sem o overhead de Least Connections global. Padrão em Envoy, YARP, NGINX moderno.
+
+**"Por que chiseled images?"** — Sem shell, sem package manager, sem usuário root: superfície de ataque ~zero. Atacante que ganhou execução não consegue executar `apt install` nem `bash`. Trade-off: debug em produção exige sidecar de debug. Padrão para 2026.
+
+---
+
+> **Próximo passo:** Avance para `fase-08-cicd-cloud.md`.
+>
+> 🚀 **Trilha Sênior:** [`fase-11-kubernetes-service-mesh.md`](./fase-11-kubernetes-service-mesh.md) — Kubernetes substitui Compose em produção.

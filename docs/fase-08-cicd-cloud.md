@@ -69,6 +69,8 @@ docs/
 
 ### ADR-019: GitHub Actions para CI/CD
 
+> 🧠 **Analogia — A Linha de Montagem da Fábrica:** Antigamente, cada carro era montado à mão — lento, inconsistente, sujeito a erros humanos. Henry Ford criou a **linha de montagem**: cada estação faz uma tarefa específica (soldar, pintar, testar) e o carro avança automaticamente. Se alguma estação detecta defeito, a linha **para**. CI/CD é a linha de montagem do software: build → test → analyze → publish → deploy. Cada push dispara a esteira. Se um teste falha, o deploy não acontece. **Nenhum humano toca no botão de deploy — a pipeline faz tudo.**
+
 **Contexto:** Precisamos de um pipeline automatizado que garanta qualidade e faça deploy.
 
 **Decisão:** GitHub Actions.
@@ -81,6 +83,8 @@ docs/
 - Environments com approval gates
 
 ### ADR-020: Azure Container Apps para Deploy
+
+> 🧠 **Analogia — O Food Truck vs Restaurante Fixo:** AKS (Kubernetes) é abrir um **restaurante completo**: você controla tudo (cozinha, salão, estoque, funcionários), mas gerencia tudo também. Azure Container Apps é como ter um **food truck numa praça de alimentação gerenciada**: a praça cuida da limpeza, segurança, estacionamento; você só cuida do cardapio (seus containers). Quando não tem cliente, você fecha o truck (scale-to-zero = custo zero). Quando tem fila, abre mais trucks automaticamente. Para a maioria dos projetos, o food truck é mais que suficiente.
 
 **Contexto:** Precisamos de um ambiente cloud para rodar os containers.
 
@@ -117,6 +121,8 @@ docs/
 
 ### ADR-021: Infrastructure as Code com Bicep
 
+> 🧠 **Analogia — A Planta Baixa do Engenheiro:** Construir infraestrutura manualmente no portal Azure é como construir uma casa sem planta: você faz do jeito que lembra, cada vez fica diferente, e quando precisa replicar (“quero igual no ambiente de staging”), ninguém sabe exatamente o que foi feito. Bicep é a **planta baixa**: descreve *exatamente* o que deve existir. Precisa de um ambiente novo? Executa a planta. Precisa destruir? Executa sem a planta. Precisa auditar? Lê o código no Git. **Infraestrutura vira código, versionada, revisável, reproduzível.**
+
 **Decisão:** Azure Bicep para provisionar infraestrutura.
 
 **Por que Bicep e não Terraform?**
@@ -129,6 +135,8 @@ docs/
 ---
 
 ## 3. Conceitos
+
+> 💡 **Visão geral:** CI/CD e IaC são as práticas que separam **projetos de faculdade** de **software de produção**. Sem CI, bugs chegam ao main. Sem CD, deploys são manuais e arriscados. Sem IaC, ambientes são snowflakes irreproduzíveis. Senior developers não fazem deploy na sexta à noite clicando botões — eles fazem merge no main na segunda de manhã e a pipeline cuida do resto.
 
 ### Pipeline de CI/CD
 
@@ -1087,6 +1095,8 @@ public class GatewayHealthTests
 
 ## 7. Checkpoint
 
+> 💡 **Por que isso importa no dia-a-dia?** Esta é a fase que transforma seu **projeto local** em **software de verdade rodando na nuvem**. Um portfólio com CI/CD + IaC mostra ao recrutador que você pensa como um Sênior: não basta funcionar — precisa ser **automatizado, reproduzível e auditável**. Na entrevista, quando perguntarem "como você deploya?", a resposta não é "rodo publish e copio os arquivos" — é "merge no main dispara build, testes, push de imagem e deploy para staging automaticamente; produção requer approval".
+
 ### Validação Completa
 
 - [ ] **CI Pipeline:** Build + test automáticos em PRs
@@ -1192,4 +1202,145 @@ open http://localhost:15672  # orderflow / orderflow123
 | 7 | YARP Gateway, Docker Multi-stage, Compose | `fase-07-gateway-docker.md` |
 | 8 | GitHub Actions, Azure Container Apps, Bicep | `fase-08-cicd-cloud.md` |
 
-> **Parabéns!** O OrderFlow está completo — da arquitetura ao deploy em cloud. Cada fase cobre conceitos essenciais exigidos no mercado brasileiro de .NET enterprise.
+---
+
+## 🔬 Aprofundamento Sênior
+
+### A1. Estratégias de Deploy — Além do Rolling Update
+
+| Estratégia | Como Funciona | Risco | Quando |
+|---|---|---|---|
+| **Rolling** (default) | Substitui pods aos poucos | Baixo, mas tráfego em duas versões | Padrão |
+| **Blue/Green** | 2 ambientes idênticos; swap completo | Zero — rollback instantâneo | Mudanças incompatíveis |
+| **Canary** | 5% → 25% → 100% baseado em métricas | Baixo com gates | Features arriscadas |
+| **Shadow** | Tráfego duplicado para v2 sem responder | Zero — apenas valida | Validar performance |
+
+### A2. Canary Automatizado com Flagger ou Argo Rollouts
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+spec:
+  strategy:
+    canary:
+      steps:
+      - setWeight: 5
+      - pause: { duration: 5m }
+      - analysis:
+          templates:
+          - templateName: success-rate
+          args:
+          - name: service-name
+            value: orders-canary
+      - setWeight: 25
+      - pause: { duration: 10m }
+      - setWeight: 100
+```
+
+O **AnalysisTemplate** valida SLO (success rate, P95 latency) — se quebrar, **rollback automático**.
+
+### A3. GitHub Actions — Reusable Workflows e Composite Actions
+
+DRY entre 4 microserviços:
+
+```yaml
+# .github/workflows/_build-service.yml (reusable)
+on:
+  workflow_call:
+    inputs:
+      service-name: { required: true, type: string }
+
+jobs:
+  build:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+      - run: dotnet test src/Services/${{ inputs.service-name }}
+      - run: dotnet publish ...
+```
+
+```yaml
+# .github/workflows/orders.yml
+jobs:
+  build:
+    uses: ./.github/workflows/_build-service.yml
+    with: { service-name: Orders }
+```
+
+### A4. Environments + Approvals
+
+```yaml
+jobs:
+  deploy-prod:
+    environment:
+      name: production
+      url: https://orderflow.com
+    steps: [ ... ]
+```
+
+No GitHub: Settings → Environments → Production → **Required reviewers**. Deploy aguarda aprovação humana.
+
+### A5. Bicep Avançado — Modules e Existing
+
+```bicep
+// modules/container-app.bicep
+param serviceName string
+param image string
+param replicas int = 2
+
+resource app 'Microsoft.App/containerApps@2024-03-01' = {
+  name: serviceName
+  ...
+}
+
+// main.bicep
+module orders 'modules/container-app.bicep' = {
+  name: 'orders'
+  params: { serviceName: 'orders', image: '...', replicas: 5 }
+}
+```
+
+#### Existing — Referenciar recurso já criado
+```bicep
+resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: 'orderflow-kv'
+  scope: resourceGroup('shared-rg')
+}
+```
+
+### A6. Terraform/Pulumi — Quando Sair do Bicep
+
+| Ferramenta | Quando |
+|---|---|
+| **Bicep** | 100% Azure, time .NET, simplicidade |
+| **Terraform** | Multi-cloud, padrão de mercado, ampla comunidade |
+| **Pulumi** | Quer IaC em **C#** (não DSL); reuso com SDK do app |
+
+ADR sugerido: documentar a escolha.
+
+### A7. Supply Chain Security
+
+- **SBOM** (Software Bill of Materials) — `dotnet sbom-tool` ou Syft
+- **Image signing** — Sigstore/Cosign assina imagens; deploy verifica
+- **SLSA** levels — provenance attestations no CI
+
+```yaml
+- name: Generate SBOM
+  run: syft ghcr.io/orderflow/orders:${{ github.sha }} -o spdx-json > sbom.json
+- name: Sign image
+  run: cosign sign --yes ghcr.io/orderflow/orders:${{ github.sha }}
+```
+
+### 💼 Perguntas Sênior
+
+**"Qual estratégia de deploy escolher para uma feature arriscada?"** — Canary com analysis automatizado. 5% por 10min, validar success rate ≥ 99% e P95 ≤ baseline+10%. Se OK, sobe para 25% → 100%. Quebrou? Rollback automático. Flagger ou Argo Rollouts no K8s; Container Apps revisions no Azure.
+
+**"Como você protege a supply chain de software?"** — (1) **SBOM** gerado no CI. (2) **Image signing** com Cosign. (3) Deploy **verifica assinatura** antes de subir. (4) **Dependabot** para deps. (5) **Trivy/Snyk** scan no CI. (6) Provenance **SLSA** levels 2-3 mínimo. Sem isso, atacante que comprometeu uma dep nuget pode injetar código.
+
+---
+
+> **🎓 Parabéns!** Você completou a trilha **Pleno** (Fases 01-08).
+>
+> 🚀 **Próxima parada:** [`fase-09-resiliencia-polly.md`](./fase-09-resiliencia-polly.md) — comece a **Trilha Sênior** (Fases 09-15) para fechar o gap das exigências de mercado 2026.
+>
+> 📋 Volte ao [`00-visao-geral.md`](./00-visao-geral.md#11-matriz-de-competências-pleno-vs-sênior) para acompanhar sua matriz de competências.
