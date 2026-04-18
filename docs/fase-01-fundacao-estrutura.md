@@ -74,6 +74,13 @@ OrderFlow/
 
 ## 2. Decisões Arquiteturais
 
+> 🤔 **Pense antes de ler:**
+> 1. Para um CRUD simples de produtos, Clean Architecture é realmente necessário? Qual seria a alternativa mais leve?
+> 2. Se dois projetos na mesma solution usam versões diferentes do mesmo NuGet — o que pode dar errado em produção?
+> 3. Por que logs estruturados (JSON com campos tipados) são mais úteis que `Console.WriteLine("error: " + message)`?
+>
+> Reflita sobre essas perguntas. A seção abaixo não apenas responde, mas explica *por que* cada decisão foi tomada — e quando a decisão oposta seria mais adequada.
+
 ### 2.1 Por Que Clean Architecture para o Catalog?
 
 > 🧠 **Analogia — O Edifício Corporativo:** Imagine um prédio comercial bem planejado. O *subsolo* (Domain) tem a fundação e os cofres — ninguém de fora toca lá. O *térreo* (Application) é a recepção: coordena quem entra e sai, mas não guarda nada de valor. Os *andares de escritório* (Infrastructure) são onde o trabalho pesado acontece — banco de dados, emails, serviços externos. E a *fachada* (Api) é o que o público vê — bonita, mas se você demolir e reconstruir, o prédio continua de pé. Cada andar tem uma **responsabilidade clara** e se comunica por **portas e elevadores** (interfaces), não por buracos na parede.
@@ -394,6 +401,47 @@ SA_PASSWORD=OrderFlow@2026!
 ---
 
 ## 4. Código de Referência Completo
+
+### Fluxo de Uma Request HTTP — De Ponta a Ponta
+
+> 💡 **Antes de ver o código, entenda o fluxo.** Quando um `GET /api/v1/products/123` chega no Catalog API, ele percorre as 4 camadas da Clean Architecture. Visualize como uma carta passando por departamentos de uma empresa:
+
+```
+  Request HTTP (GET /api/v1/products/123)
+         │
+         ▼
+  ┌─────────────────────┐
+  │   Api Layer          │  Controller recebe a request, valida binding,
+  │   (ProductsCtrl)     │  chama o Application Layer.
+  └──────────┬──────────┘  Retorna: IActionResult (200, 404, 400...)
+             │
+             ▼
+  ┌─────────────────────┐
+  │   Application Layer  │  ProductService coordena: busca via repositório,
+  │   (ProductService)   │  valida regras de aplicação, retorna DTO.
+  └──────────┬──────────┘  NÃO tem SQL, NÃO tem HttpContext.
+             │
+             ▼
+  ┌─────────────────────┐
+  │   Domain Layer       │  Product entity com regras de negócio.
+  │   (Product.cs)       │  "Preço não pode ser negativo" vive aqui.
+  └──────────┬──────────┘  NÃO conhece banco, NÃO conhece HTTP.
+             │
+             ▼
+  ┌─────────────────────┐
+  │   Infrastructure     │  ProductRepository traduz para SQL via EF Core.
+  │   (EF Core)          │  CatalogDbContext → SQL Server → dados voltam.
+  └──────────┬──────────┘
+             │
+             ▼
+  ┌─────────────────────┐
+  │   SQL Server         │  Banco real em Docker.
+  └─────────────────────┘
+             │
+  Response HTTP (200 OK + JSON)
+```
+
+> 🔑 **A Regra de Dependência:** As setas apontam para **dentro**. Api depende de Application. Application depende de Domain. Infrastructure depende de Application E Domain. Mas **Domain não depende de nada** — ele é o coração isolado do sistema. Se amanhã você trocar SQL Server por PostgreSQL, só Infrastructure muda. Domain e Application nem percebem.
 
 ### 4.1 SharedKernel — Classes Base
 
@@ -1049,6 +1097,13 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
     }
 }
 ```
+
+> 💡 **O que é Global Query Filter e por que usar?** O `HasQueryFilter` adiciona automaticamente um `WHERE IsActive = 1` em **toda** query EF Core para essa entidade. Assim, produtos desativados ficam "invisíveis" sem que cada query precise lembrar de filtrar. 
+>
+> **Três cuidados importantes:**
+> 1. **Admin precisa ver desativados?** Use `.IgnoreQueryFilters()` em queries específicas de administração
+> 2. **Performance:** O filtro adiciona condição ao SQL, mas o impacto é mínimo com índice filtrado: `CREATE INDEX IX_Products_Active ON Products(IsActive) WHERE IsActive = 1`
+> 3. **Cascading:** Se um `Product` está filtrado (inactive), incluir `Products` via navigation property retorna lista vazia — mesmo que existam no banco. Isso pode confundir em relatórios
 
 **`src/Services/Catalog/OrderFlow.Catalog.Infrastructure/Data/Configurations/ProductConfiguration.cs`**
 
@@ -1896,6 +1951,38 @@ public class ProductsControllerTests(CustomWebApplicationFactory factory)
 
 ---
 
+## ⚠️ Erros Comuns Nesta Fase
+
+> Esses erros são cometidos por 8 em cada 10 devs na primeira implementação de Clean Architecture. Conheça-os antes de tropeçar neles.
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Referência circular** — Infrastructure referenciando Api, ou Domain referenciando Infrastructure | Compilação falha com "circular dependency detected" | Revise a Dependency Rule: `Domain ← Application ← Infrastructure ← Api`. Nunca no sentido contrário |
+| 2 | **Lógica de negócio no Controller** — Controller com 30+ linhas de if/else | Controller vira God Class, impossível testar isoladamente | Se o controller tem mais que 5-10 linhas, extraia para Application/Service |
+| 3 | **Esquecer `CancellationToken`** em métodos async | Requests canceladas continuam processando, desperdiçando CPU | Todo método async recebe e propaga `CancellationToken ct` como último parâmetro |
+| 4 | **Copiar `.csproj` com versões diferentes** sem Central Package Management | FluentValidation 11.9 no Catalog, 11.11 no Orders → comportamentos diferentes | Use `Directory.Packages.props` desde o início |
+| 5 | **Não testar `SearchAsync` com filtros combinados** | SQL gerado pelo EF Core com múltiplos `.Where()` pode gerar query lenta ou incorreta | Escreva testes com combinações: sem filtro, com 1, com 2, com todos |
+| 6 | **Migration falha e dev apaga o banco** | Perde dados de desenvolvimento, não aprende a resolver conflitos | Aprenda `dotnet ef migrations remove`, `Script-Migration`, e rollback manual |
+
+---
+
+## 🔧 Troubleshooting — Fase 01
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| `SA_PASSWORD` rejeitada pelo SQL Server | Senha não atende complexidade (8+ chars, maiúscula, minúscula, número, especial) | Use `OrderFlow@2026!` ou similar |
+| Porta 1433 já em uso | SQL Server local ou outro container usando a porta | `netstat -ano \| findstr 1433` para encontrar; mude a porta no compose |
+| Migration falha com "Login failed" | Container não está healthy (demora ~10-30s) | `docker ps` deve mostrar `(healthy)`, não `(health: starting)` |
+| Seq não abre no browser | Porta 5341 mapeada para porta 80 do container | Acesse `http://localhost:5341` (não 80) |
+| `dotnet ef` não encontrado | Global tool não instalada | `dotnet tool install --global dotnet-ef` |
+| "No project was found" no ef migrations | Path do `--project` ou `--startup-project` errado | Use caminhos relativos à raiz da solution |
+| Swagger não mostra endpoints | Controller não tem `[ApiController]` ou route `[Route("api/v1/[controller]")]` | Verifique atributos no controller |
+| Health check `/health/ready` retorna Unhealthy | SQL Server não acessível (connection string errada ou container down) | `docker compose logs sqlserver` para verificar |
+
+> 💡 **Regra dos 3 passos para debugar qualquer problema nesta fase:** (1) `docker ps` — o container está rodando? (2) `docker compose logs <serviço>` — tem erro no log? (3) Verifique connection string no `appsettings.Development.json`. Em 90% dos casos, está em um desses três.
+
+---
+
 ## 6. Checkpoint
 
 > 💡 **Por que isso importa no dia-a-dia?** Em times reais, a Fase 1 é a fundação que define a **velocidade de todas as fases seguintes**. Um projeto mal estruturado na semana 1 gera débito técnico que multiplica por 10 o custo de cada feature futura. Sêniores sabem: investir 2 dias na estrutura correta economiza 2 meses de refatoração.
@@ -2087,6 +2174,24 @@ Solução para "preciso de dado de outro serviço": **eventos** (Fase 05) ou **A
 **"Como você evolui schema sem downtime?"** — Padrão **Expand → Migrate → Contract**: (1) adicionar nova coluna nullable, (2) deploy app que escreve em ambas, (3) migrar dados em background, (4) deploy app que lê só da nova, (5) remover coluna antiga. Nunca faz `RENAME` ou `DROP` em colunas usadas.
 
 ---
+
+---
+
+## 🔗 Conectando os Pontos
+
+### O que construímos aqui que será usado nas próximas fases
+
+| Artefato | Usado em | Como |
+|----------|----------|------|
+| `Entity`, `AuditableEntity` | **Fase 02** (DDD) | `AggregateRoot` herda de `Entity`, ganhando domain events |
+| `IDomainEvent` | **Fase 02-03** | Ganha `: INotification` para integrar com MediatR |
+| `IRepository<T>`, `IUnitOfWork` | **Fase 02-03** | Orders implementa com padrão de aggregate persistence |
+| `Directory.Packages.props` | **Todas** | Cada novo pacote é adicionado aqui — um lugar só |
+| Docker Compose | **Fase 05-08** | Ganha RabbitMQ, Redis, Prometheus, Grafana |
+| Health Checks | **Fase 06-07** | OpenTelemetry e YARP usam para routing e observabilidade |
+| Serilog | **Fase 06** | Ganha enrichers, correlation ID, sinks adicionais |
+
+> 💡 **Preview da Fase 02:** Na próxima fase, o SharedKernel que criamos aqui vai ganhar `AggregateRoot` e `ValueObject` — as peças que faltam para modelar o domínio rico do Orders API. O `Product` simples que fizemos aqui será contrastado com o `Order` rico: invariantes, state machine, domain events. A diferença vai te mostrar *quando* Clean Architecture + DDD vale a pena — e quando é overengineering.
 
 > **Próximo passo:** Avance para `fase-02-dominio-ddd.md` para implementar o domínio rico do Orders API.
 >

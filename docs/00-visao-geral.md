@@ -27,6 +27,15 @@
 
 ---
 
+> 🤔 **Antes de mergulhar neste documento, reflita:**
+> 1. Qual a diferença entre um projeto que "usa microserviços" e um que realmente *precisa* deles?
+> 2. Se você fosse explicar CQRS para um dev junior em 2 minutos, o que diria?
+> 3. Por que a maioria dos portfólios de backend falham em impressionar entrevistadores sênior?
+>
+> Guarde suas respostas. Ao final deste documento, você vai revisá-las com uma visão muito mais profunda.
+
+---
+
 ## 1. Para Quem é Este Projeto
 
 O OrderFlow foi reformulado em 2026 para mapear **um a um** os requisitos das vagas **Pleno e Sênior** de .NET no Brasil. Se você é:
@@ -381,33 +390,36 @@ Domain ← Application ← Infrastructure ← Api
 ## 9. Padrões Arquiteturais
 
 ### Padrões Estruturais
-- **Clean Architecture** — fronteiras explícitas, regra de dependência
-- **Vertical Slice Architecture** — alternativa para serviços CRUD-heavy (Fase 01 deep dive)
-- **Database per Service** — autonomia + ownership
+
+> 💡 **Por que tantos padrões?** Cada padrão resolve um problema específico que emerge quando sistemas crescem. Um CRUD simples não precisa de Outbox Pattern — mas quando dois bancos de dados precisam estar consistentes sem transação distribuída, o Outbox é a resposta. A chave é **saber quando aplicar**, não aplicar todos sempre.
+
+- **Clean Architecture** — fronteiras explícitas, regra de dependência. *A dependência aponta para dentro: Api → Application → Domain. Nunca o contrário. Isso permite trocar o banco de dados sem tocar no domínio.*
+- **Vertical Slice Architecture** — alternativa para serviços CRUD-heavy (Fase 01 deep dive). *Organiza por feature em vez de camada. Menos reuso, mais coesão. Ideal quando features são independentes.*
+- **Database per Service** — autonomia + ownership. *Cada microserviço tem seu próprio caderno de anotações — ninguém escreve no caderno do outro. Isso elimina acoplamento por banco compartilhado, o assassino silencioso de microserviços.*
 
 ### Padrões Táticos (DDD)
 - **Aggregate Root**, **Entity**, **Value Object**, **Domain Service**
-- **Domain Event** (MediatR) vs **Integration Event** (MassTransit)
+- **Domain Event** (MediatR) vs **Integration Event** (MassTransit). *Domain Events são "gritos dentro de casa" — ficam no mesmo processo. Integration Events são "cartas registradas" — cruzam fronteiras de serviço via broker.*
 - **Repository** + **Unit of Work** (atualizando o aggregate inteiro)
 - **Specification Pattern** para queries complexas
 
 ### Padrões de Integração
-- **CQRS** — modelos de leitura/escrita separados
-- **Outbox Pattern** — at-least-once guarantee sem 2PC
+- **CQRS** — modelos de leitura/escrita separados. *Não é sobre bancos diferentes (apesar de poder ser). É sobre otimizar cada lado: escrita protegida por domínio rico, leitura otimizada com SQL puro.*
+- **Outbox Pattern** — at-least-once guarantee sem 2PC. *O problema: "salvei no banco mas o RabbitMQ caiu — e agora?" O Outbox salva o evento na mesma transação do banco. Um background job publica depois. Garantia: se o banco salvou, o evento vai ser publicado.*
 - **Saga / Process Manager** — orquestração de transações distribuídas (Fase 05)
-- **Idempotent Consumer** — exigência do at-least-once
+- **Idempotent Consumer** — exigência do at-least-once. *Se o sistema garante "pelo menos uma vez", o consumer DEVE lidar com duplicatas. Sem idempotência, o cliente recebe 3 emails do mesmo pedido.*
 - **Event Sourcing** + **CDC (Debezium)** — Fase 13 comparativa
 
 ### Padrões de Resiliência (Fase 09)
 - **Retry** com backoff exponencial + jitter
-- **Circuit Breaker** (closed → open → half-open)
+- **Circuit Breaker** (closed → open → half-open). *Analogia: disjuntor elétrico. Quando a corrente é excessiva (muitas falhas), o disjuntor "abre" e corta o fluxo. Depois de um tempo, "meio-abre" para testar se voltou. Se ok, fecha.*
 - **Bulkhead** — isolamento de recursos
 - **Timeout** — fail-fast
 - **Hedging** — primeiro a responder vence
 - **Fallback** — degradação graciosa
 
 ### Padrões de Observabilidade
-- **The 3 Pillars** — Logs, Metrics, Traces
+- **The 3 Pillars** — Logs, Metrics, Traces. *Logs dizem "o que aconteceu". Metrics dizem "quanto". Traces dizem "por onde passou". Juntos, respondem qualquer pergunta sobre um incidente.*
 - **RED Method** (Rate, Errors, Duration) para serviços
 - **USE Method** (Utilization, Saturation, Errors) para recursos
 - **SLO/SLI/Error Budget** — Fase 14
@@ -420,6 +432,39 @@ Domain ← Application ← Infrastructure ← Api
 ---
 
 ## 10. Roadmap de 15 Fases
+
+### Mapa de Dependências Entre Fases
+
+> 💡 **Por que essa ordem?** As fases seguem uma progressão pedagógica intencional. Você não pode implementar CQRS (Fase 03) sem ter o domínio (Fase 02), que por sua vez precisa da estrutura Clean Arch (Fase 01). Entender essa cadeia evita frustração e gaps de conhecimento.
+
+```
+  ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐
+  │ F-01 │───▶│ F-02 │───▶│ F-03 │───▶│ F-04 │
+  │Fundaç│    │ DDD  │    │ CQRS │    │ Auth │
+  └──────┘    └──────┘    └──────┘    └──┬───┘
+                                         │
+                            ┌────────────┼────────────┐
+                            ▼            ▼            ▼
+                       ┌──────┐    ┌──────┐    ┌──────┐    ┌──────┐
+                       │ F-05 │───▶│ F-06 │───▶│ F-07 │───▶│ F-08 │
+                       │Mensag│    │Cache │    │Docker│    │CI/CD │
+                       └──────┘    │ OTel │    └──────┘    └──┬───┘
+                                   └──────┘                   │
+                  ═══════════ TRILHA SÊNIOR ════════════      │
+                  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐     │
+                  │ F-09 │  │ F-10 │  │ F-11 │  │ F-12 │◄────┘
+                  │Polly │  │Perf  │  │ K8s  │  │OAuth2│
+                  └──────┘  └──────┘  └──────┘  └──────┘
+                  ┌──────┐  ┌──────┐  ┌──────┐
+                  │ F-13 │  │ F-14 │  │ F-15 │
+                  │gRPC+ │  │ SRE  │  │  AI  │
+                  └──────┘  └──────┘  └──────┘
+  
+  ───▶ = dependência obrigatória (deve completar antes)
+  Fases 09-15: podem ser feitas em QUALQUER ordem após F-08
+```
+
+> ⚠️ **Armadilha comum:** Tentar pular para Fase 09+ sem dominar as Fases 01-08. O SharedKernel, o domínio, os pipelines MediatR e o Docker Compose são **pré-requisitos** para tudo que vem depois. Se pular, você vai copiar código sem entender — e isso aparece em entrevistas.
 
 ### Visão Macro
 
@@ -594,6 +639,9 @@ Marque conforme avança. Cada item rastreia uma habilidade exigida em vagas reai
 | Nullable | `<Nullable>enable</Nullable>` em todos os projetos |
 | Primary constructors | Default em services e handlers |
 | `sealed` | Toda classe que não é base — performance + intent |
+
+> 💡 **Por que `sealed` em tudo?** Quando o JIT sabe que uma classe não tem herdeiros, ele pode fazer **devirtualization** — chamar métodos diretamente em vez de via vtable. Isso habilita **inlining**, que é a otimização mais impactante em hot paths. Além disso, `sealed` comunica intenção: "esta classe não foi projetada para herança". **Quando NÃO usar:** classes base explícitas como `Entity`, `AggregateRoot`, `ValueObject` — que existem *para* ser herdadas.
+
 | `CancellationToken` | Obrigatório em todo método async (último parâmetro) |
 | `ConfigureAwait(false)` | Obrigatório em libs (não em ASP.NET Core handlers) |
 | Records | DTOs, Commands, Queries, Events, Value Objects |
@@ -672,6 +720,13 @@ docker compose -f deploy/docker/docker-compose.yml --profile all up -d
 
 > Selecionadas das 80+ perguntas distribuídas pelas 15 fases. Foco no nível Sênior.
 
+### 💡 Como Usar Estas Perguntas em Entrevistas
+
+> Não memorize respostas. Use o OrderFlow como **referência viva**. Quando perguntarem sobre CQRS, abra a Fase 03 e mostre o diagrama do fluxo Command vs Query. Quando perguntarem sobre resiliência, mostre o pipeline Polly da Fase 09 e explique cada camada. **Mostrar código real + explicar a decisão** é infinitamente mais poderoso que recitar teoria.
+>
+> **Exemplo de resposta matadora:**
+> *"Neste projeto, implementei Outbox Pattern para garantir consistência entre o banco de dados e o RabbitMQ. A alternativa seria Two-Phase Commit, mas o 2PC é frágil com brokers como RabbitMQ. O trade-off: latência maior na entrega do evento (polling interval do outbox), mas zero perda de mensagem. Posso mostrar o código e os testes."*
+
 ### Arquitetura
 **1. "Quando você usaria Vertical Slice em vez de Clean Architecture?"**
 — Quando o sistema é majoritariamente CRUD com poucas regras transversais. Vertical Slice elimina o overhead de 4 camadas e organiza por **feature** (cada feature tem seu Endpoint + Handler + Validator + DTO + DataAccess). Acoplamento alto **dentro** da feature, baixo **entre** features. Trade-off: menos reuso, mais duplicação aceita conscientemente.
@@ -720,6 +775,40 @@ docker compose -f deploy/docker/docker-compose.yml --profile all up -d
 
 **14. "Como você lidaria com legacy .NET Framework durante migração para .NET 10?"**
 — **Strangler Fig Pattern**: novo desenvolvimento em .NET 10, legado coexistindo. (1) Identificar bounded contexts no monolito. (2) Extrair um serviço por vez para .NET 10 com gateway roteando o tráfego. (3) Migrar consumidores aos poucos. (4) Aposentar legado quando todos os endpoints saírem. Comunicação durante migração: REST se síncrono inevitável, eventos via broker quando possível.
+
+---
+
+## 16. Erros Comuns ao Iniciar o OrderFlow
+
+> ⚠️ **Esses erros são cometidos por 9 em cada 10 desenvolvedores que tentam projetos desse porte pela primeira vez. Leia antes de começar.**
+
+| # | Erro | Por Que Acontece | Consequência | Solução |
+|---|---|---|---|---|
+| 1 | **Pular a Fase 01** achando que "já sabe Clean Arch" | O SharedKernel, Entity base, Result pattern e health checks são usados em TODAS as fases seguintes | Código da Fase 02 não compila; copiar sem entender gera gaps | Siga a ordem. Mesmo que revise rápido, implemente cada artefato |
+| 2 | **Tentar implementar tudo de uma vez** | Ansiedade de "quero ter tudo pronto" | Código quebrado, frustrante, impossível debugar | Uma fase por vez. Checkpoint no final de cada uma |
+| 3 | **Copiar código sem ler os ADRs** | "Funciona, então está bom" | Em entrevista, não consegue explicar *por que* escolheu X | Leia o ADR antes de implementar. O "porquê" é mais valioso que o "como" |
+| 4 | **Não subir Docker antes de rodar migrations** | SQL Server, Redis e RabbitMQ rodam em containers | `Connection refused` em tudo | `docker compose up -d` é SEMPRE o primeiro comando |
+| 5 | **Ignorar os testes** | "Depois eu testo" | Bugs acumulam, refactor fica impossível, CI falha | Escreva testes junto com a feature. Fase 01 já configura xUnit |
+| 6 | **Usar SQLite/in-memory para "simplificar" testes** | Parece mais rápido | Comportamento diferente do SQL Server real (colation, tipos, locks) | Testcontainers — SQL Server real em container efêmero |
+
+---
+
+## 17. Troubleshooting — Setup Inicial
+
+> 🔧 **Problemas comuns ao configurar o ambiente pela primeira vez:**
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| `docker compose up` falha | Docker Desktop não está rodando, ou WSL2 não configurado | Abra Docker Desktop, verifique Settings → General → Use WSL2 |
+| SQL Server não aceita `SA_PASSWORD` | Senha não atende complexidade (8+ chars, maiúscula, minúscula, número, especial) | Use uma senha como `OrderFlow@2026!` |
+| `.NET 10 SDK not found` | SDK não instalado ou `global.json` aponta versão errada | `dotnet --list-sdks` para verificar; baixe em dotnet.microsoft.com |
+| `Connection refused` ao rodar migration | Container do SQL Server não está ready (demora ~10s para ficar healthy) | `docker ps` → verifique coluna STATUS mostra `(healthy)`, não `(health: starting)` |
+| Seq não abre no browser | Porta 5341 conflitando com outro serviço | `netstat -ano \| findstr 5341` ou mude a porta no `.env` |
+| `dotnet ef` não encontrado | Global tool não instalada | `dotnet tool install --global dotnet-ef` |
+| Porta 1433 já em uso | SQL Server local ou outro container usando a porta | `docker ps -a` para ver conflitos; mude a porta no `docker-compose.yml` |
+| RabbitMQ Management UI não abre | Porta 15672 não mapeada ou container não está healthy | Verifique `docker compose logs rabbitmq` |
+
+> 💡 **Dica de ouro:** Quando algo não funciona, siga esta ordem: (1) `docker ps` — está rodando? (2) `docker compose logs <serviço>` — tem erro? (3) Verifique connection strings no `appsettings.Development.json`. 90% dos problemas estão em um desses três.
 
 ---
 

@@ -81,6 +81,13 @@ src/BuildingBlocks/
 
 ## 2. Decisões Arquiteturais
 
+> 🤔 **Pense antes de ler:**
+> 1. Por que o Identity API é um serviço **separado** e não parte do Orders API? O que acontece se ele cair?
+> 2. Qual a diferença entre **Authentication** (quem é você) e **Authorization** (o que você pode fazer)? Onde cada uma acontece no pipeline do ASP.NET Core?
+> 3. Se um JWT é self-contained (todas as claims estão nele), como você *revoga* acesso de um usuário imediatamente?
+>
+> Não existe token 100% seguro — existe token com **risco controlado**. As decisões abaixo mostram como.
+
 ### ADR-009: Identity como Serviço Separado
 
 > 🧠 **Analogia — O Cartório de Identidade:** Pense no Identity API como um **cartório**: ele é o único lugar que emite documentos (tokens). A padaria (Orders API), a farmácia (Catalog API) e o banco (Gateway) não emitem RG — eles apenas **verificam se o documento é autêntico** (validam a assinatura do JWT). Se o cartório cair, ninguém consegue se registrar, mas quem já tem RG válido continua circulando normalmente até o documento expirar.
@@ -1246,6 +1253,54 @@ public class AuthControllerTests : IClassFixture<WebApplicationFactory<Program>>
     }
 }
 ```
+
+---
+
+## ⚠️ Erros Comuns em Autenticação e Segurança
+
+| # | Erro | Impacto | Solução |
+|---|---|---|---|
+| 1 | **Armazenar JWT no `localStorage`** | Vulnerável a XSS — qualquer script malicioso lê o token | Use `HttpOnly` + `Secure` + `SameSite=Strict` cookies, ou mantenha em memória com refresh token em cookie |
+| 2 | **Secret key curta ou hardcoded** | `"my-secret"` como chave = brute force trivial; hardcoded = vaza no Git | Mínimo 256 bits (32 bytes). Use `dotnet user-secrets` em dev, Key Vault em produção |
+| 3 | **Não validar `Issuer` e `Audience`** | Token de outro sistema é aceito pelo seu | `ValidateIssuer = true`, `ValidateAudience = true` com valores explícitos |
+| 4 | **IDOR: usar `customerId` do body em vez do token** | Usuário A acessa dados do usuário B trocando o ID | Extrair `customerId` do `ClaimsPrincipal`, nunca do request body |
+| 5 | **Rate limiter só no gateway, não no login** | Brute force direto no Identity API bypassa o gateway | Rate limiter no `/login` e `/register` do Identity API (já configurado nesta fase) |
+| 6 | **Refresh token sem rotação** | Token roubado tem vida ilimitada | Ao usar refresh token, invalide o anterior e emita novo par (access + refresh) |
+| 7 | **[Authorize] no controller mas endpoint permite anonymous** | `[AllowAnonymous]` em um action override a policy do controller | Revise cada endpoint. Use `[Authorize(Policy = "...")]` explicitamente quando necessário |
+
+---
+
+## 🔧 Troubleshooting — Fase 04
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| 401 em todos os endpoints | JWT secret no Identity diferente do Orders API | Mesma `JwtSettings:SecretKey` nos dois `appsettings.json`. Verifique com `jwt.io` decodificando o token |
+| 403 mesmo com token válido | Claim `role` não bate com a policy | Decodifique o token em jwt.io — verifique se `role` está como array `["Admin"]` ou string `"Admin"` |
+| "IDX10214: Audience validation failed" | `ValidAudience` configurado diferente do `aud` no token | Alinhe `JwtSettings:Audience` entre emissor e validador |
+| Identity API não cria tabelas | `EnsureCreated()` não chamado, ou connection string errada | Verifique migration: `dotnet ef database update -p src/Services/Identity/OrderFlow.Identity.Api` |
+| Rate limiter não funciona | `UseRateLimiter()` posicionado depois de `UseAuthorization()` no pipeline | Ordem: `UseRateLimiter()` → `UseAuthentication()` → `UseAuthorization()` |
+| "No authenticationScheme was specified" | `AddAuthentication()` sem `DefaultScheme` | `builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)` |
+| Password validation falha sempre | IdentityOptions com regras default muito rígidas | Configure `options.Password.RequiredLength`, etc. nas options do Identity |
+
+---
+
+## 🔗 Conectando os Pontos
+
+### O que veio das fases anteriores
+
+| Artefato | Origem | Usado como |
+|---------|--------|-----------|
+| `ICurrentUserService` | Fase 03 Application | Agora implementado com `IHttpContextAccessor` + `ClaimsPrincipal` |
+| Pipeline Behaviors | Fase 03 | LoggingBehavior agora inclui UserId nos logs estruturados |
+| Docker Compose | Fase 01 | Identity API adicionado como novo serviço no compose |
+
+### Preview: O que vem nas próximas fases
+
+> **Fase 05 (Mensageria):** Integration Events incluirão `UserId` como metadata — rastreabilidade end-to-end.
+>
+> **Fase 07 (Gateway):** O YARP reverse proxy centralizará autenticação, fazendo JWT validation antes de rotear para os serviços internos. Os serviços confiam no gateway — mas ainda validam o token (defense in depth).
+>
+> **Fase 12 (OAuth2 Avançado):** O que construímos aqui com JWT simples evoluirá para fluxos PKCE, consent screens, e multi-tenant com Identity Server.
 
 ---
 

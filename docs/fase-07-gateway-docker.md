@@ -68,6 +68,13 @@ tests/
 
 ## 2. Decisões Arquiteturais
 
+> 🤔 **Pense antes de ler:**
+> 1. Por que colocar um **reverse proxy** na frente dos serviços em vez de expor cada API diretamente?
+> 2. Se o Gateway cai, **tudo cai** — como mitigar esse single point of failure?
+> 3. Multi-stage Docker build: por que a imagem final usa `aspnet` (runtime) e não `sdk`? Qual o impacto no tamanho?
+>
+> O Gateway é a porta de entrada do seu sistema. Docker é a embalagem. Juntos, transformam "funciona no meu PC" em "funciona em qualquer lugar".
+
 ### ADR-017: YARP como API Gateway
 
 > 🧠 **Analogia — O Concierge do Hotel:** Imagine um hotel de luxo com vários serviços: restaurante, spa, business center. O hóspede não precisa saber onde fica cada um, nem como chegar — ele fala com o **concierge** na recepção, que encaminha cada pedido para o lugar certo. O concierge também faz triagem: verifica se o hóspede é VIP (autenticação), limita quantos pedidos por hora (rate limiting) e pode até traduzir o pedido se necessário (transforms). **YARP é o concierge**: um ponto único de entrada que roteia, protege e observa todo o tráfego.
@@ -939,6 +946,44 @@ public class OrdersApiContainerTests : IAsyncLifetime
     }
 }
 ```
+
+---
+
+## ⚠️ Erros Comuns com Gateway e Docker
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **YARP routing sem health check** | Gateway roteia para serviço que está down → 502 Bad Gateway | Configure `HealthCheck` no cluster YARP: `"HealthCheck": { "Active": { "Enabled": true } }` |
+| 2 | **Dockerfile com `sdk` na imagem final** | Imagem de ~800MB em vez de ~200MB, inclui compilador desnecessário | Multi-stage build: `FROM sdk AS build` → `FROM aspnet AS final`. Imagem final só tem runtime |
+| 3 | **Docker Compose sem `depends_on` com health check** | API sobe antes do SQL Server estar pronto → connection refused | Use `depends_on: sqlserver: condition: service_healthy` |
+| 4 | **Porta hardcoded no serviço** | Conflito de portas quando dois serviços usam a mesma | Use `ASPNETCORE_URLS=http://+:80` no container. Mapeie portas diferentes no compose: `"5001:80"`, `"5002:80"` |
+| 5 | **Gateway com JWT validation mas serviços sem** | Bypass: acesso direto ao serviço sem autenticação | Defense in depth: **ambos** validam JWT. Gateway é a primeira barreira, serviço é a segunda |
+| 6 | **COPY . . antes de restore no Dockerfile** | Qualquer mudança de código invalida cache do `dotnet restore` (download de todos os packages) | `COPY *.csproj .` → `RUN dotnet restore` → `COPY . .` → `RUN dotnet publish` |
+
+---
+
+## 🔧 Troubleshooting — Fase 07
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| "Connection refused" no docker compose | Serviço referencia `localhost` em vez do nome do container | Use nomes de serviço do compose: `http://orders-api:80`, não `http://localhost:5003` |
+| YARP retorna 404 para rota existente | `Match.Path` no YARP config não bate com a URL | YARP usa `{**catch-all}`. Verifique: `"/api/orders/{**remainder}"` |
+| Build Docker falha "project not found" | Context path errado ou `.dockerignore` excluindo arquivos necessários | Verifique que o `docker build` roda na raiz da solution, não na pasta do projeto |
+| Health check do compose trava | Endpoint `/health` retorna 503 | Verifique se todos os serviços dependentes estão rodando (SQL Server, Redis, RabbitMQ) |
+| Container reinicia em loop | Crash na inicialização (migration falha, config ausente) | `docker logs <container>` para ver o erro. Comum: connection string faltando em env var |
+
+---
+
+## 🔗 Conectando os Pontos
+
+| Artefato | Origem | Transformação nesta fase |
+|---------|--------|------------------------|
+| Todos os serviços (Orders, Catalog, Identity) | Fases 01-06 | Containerizados com multi-stage Dockerfiles |
+| JWT validation | Fase 04 | Centralizada no Gateway + mantida nos serviços (defense in depth) |
+| Health checks | Fases 01, 06 | Aggregados pelo Gateway para um único `/health` endpoint |
+| OpenTelemetry | Fase 06 | Gateway adiciona trace headers automaticamente via YARP |
+
+> **Preview Fase 08:** O `docker compose` que construímos aqui será o que o GitHub Actions usa para rodar testes de integração no CI. O Dockerfile multi-stage será o que o pipeline builda e pusha para o Azure Container Registry.
 
 ---
 

@@ -113,6 +113,13 @@ src/Services/Orders/
 
 ## 2. Decisões Arquiteturais
 
+> 🤔 **Pense antes de ler:**
+> 1. Se Commands e Queries usam o **mesmo banco de dados**, qual é a vantagem real de separar os caminhos? (Dica: não é sobre bancos diferentes.)
+> 2. O que acontece se a validação de um Command está no Controller em vez de num Pipeline Behavior? Como isso afeta testabilidade?
+> 3. Por que retornar `Result<T>` é melhor que `throw new NotFoundException()`? Quando exceções *são* apropriadas?
+>
+> A resposta curta: CQRS otimiza cada caminho independentemente. A longa: veja as decisões abaixo.
+
 ### ADR-006: CQRS — Separação de Leitura e Escrita
 
 > 🧠 **Analogia — O Balcão da Biblioteca:** Em uma biblioteca, você tem dois balcões diferentes: um para **devolver/reservar livros** (escrita) e outro para **consultar o catálogo** (leitura). O balcão de devolução precisa verificar multas, atualizar o sistema, carimbar o livro — é lento e cuidadoso. O balcão de consulta só precisa de uma tela com busca rápida — não mexe em nada, só lê. **CQRS é essa separação**: quem escreve (Command) tem um caminho complexo com domínio rico e validações; quem lê (Query) tem um caminho otimizado para velocidade.
@@ -1748,6 +1755,77 @@ public class ValidationBehaviorTests
     private sealed record TestRequest;
 }
 ```
+
+---
+
+## ⚠️ Erros Comuns com CQRS + MediatR
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Injetar `IOrderRepository` (EF Core) em QueryHandlers** | Quebra a separação CQRS. Queries ficam lentas com change tracking | Queries devem usar `IOrderReadRepository` (Dapper). Repositório EF é só para Commands |
+| 2 | **Registrar behaviors na ordem errada** | Validation depois de Transaction = transação aberta para request inválida | Ordem correta: Logging → Validation → Transaction. Verifique `AddBehavior<>()` no DI |
+| 3 | **Esquecer `CancellationToken` nos handlers** | MediatR propaga o token, mas se o handler ignora, requests canceladas continuam processando | Propague `ct` para todo `async` call: repositório, EF Core, Dapper |
+| 4 | **Result<T> com `catch(Exception)`** | Captura exceções inesperadas (NullRef, SO) e converte em Result.Failure — esconde bugs | Só capture `DomainException`. Deixe `Exception` genérica borbulhar para o middleware |
+| 5 | **Dapper SQL com string interpolation** | SQL injection: `$"WHERE Name = '{input}'"` | Sempre use parâmetros: `WHERE Name = @Name`, passando `new { Name = input }` |
+| 6 | **DTOs com `init` em propriedades que Dapper precisa setar** | Dapper precisa de setters para popular objetos via reflection | Verifique se `init` funciona com sua versão do Dapper, ou use `{ get; set; }` nos DTOs de leitura |
+
+---
+
+## 🔧 Troubleshooting — Fase 03
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| "No handler registered for CreateOrderCommand" | `AddMediatR` recebe assembly errado; ou handler não implementa `IRequestHandler<TRequest, TResponse>` com tipo de retorno exato | Verifique: `services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CreateOrderCommand).Assembly))` |
+| "Owned type 'Money' already configured" | Duas configurações conflitantes no `ModelBuilder` | Verifique se não há duplicação em `ApplyConfigurationsFromAssembly` |
+| Dapper retorna null em tudo | Nomes de colunas no SQL não batem com propriedades do DTO | Dapper é case-insensitive mas exige match de nomes. Use `AS` no SQL: `SELECT order_id AS OrderId` |
+| TransactionBehavior abre transação para queries | Filtro `EndsWith("Command")` falhando | Considere interface marker `ICommand` em vez de string matching |
+| Domain Events não disparam | Entidades no ChangeTracker estão como `Detached` | Verifique se o aggregate foi obtido via `DbSet`, não criado com `new` fora do tracking |
+| Validation nunca executa | `AbstractValidator<T>` não registrado no DI | Verifique `services.AddValidatorsFromAssembly(...)` |
+
+### 💡 Exemplo Completo de Request Ida-e-Volta (curl)
+
+```bash
+# 1. Criar pedido
+curl -X POST http://localhost:5003/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customerId": "550e8400-e29b-41d4-a716-446655440000", "shippingStreet": "Rua A", "shippingCity": "SP", "shippingState": "SP", "shippingZipCode": "01001-000", "shippingCountry": "BR"}'
+# Retorna: { "isSuccess": true, "value": "guid-do-pedido" }
+
+# 2. Adicionar item
+curl -X POST http://localhost:5003/api/orders/{orderId}/items \
+  -H "Content-Type: application/json" \
+  -d '{"productId": "...", "productName": "Laptop", "unitPrice": 5000.00, "currency": "BRL", "quantity": 2}'
+
+# 3. Consultar pedido (caminho de leitura — Dapper)
+curl http://localhost:5003/api/orders/{orderId}
+# Retorna: DTO completo com items, totais, status
+
+# 4. Confirmar pedido
+curl -X POST http://localhost:5003/api/orders/{orderId}/confirm
+
+# 5. Validação falha (exemplo)
+curl -X POST http://localhost:5003/api/orders/{orderId}/confirm
+# Retorna 400: { "detail": "Can only confirm pending orders." }
+```
+
+---
+
+## 🔗 Conectando os Pontos
+
+### O que veio das fases anteriores
+
+| Artefato | Origem | Transformação |
+|---------|--------|--------------|
+| `IDomainEvent` | Fase 01 SharedKernel | Agora herda de `INotification` (MediatR). **Breaking change conceitual:** estamos acoplando SharedKernel ao MediatR — decisão pragmática documentada no ADR |
+| `Order`, `OrderItem`, VOs | Fase 02 Domain | Persistidos via EF Core com Owned Types (Money → colunas `TotalAmount` + `TotalCurrency`) |
+| `IOrderRepository` | Fase 02 Domain | Implementação concreta em Infrastructure com EF Core |
+| `ICurrentUserService` | Novo nesta fase | Será implementado na **Fase 04** com claims do JWT |
+
+### Preview: O que vem nas próximas fases
+
+> **Fase 04 (Auth):** O `ICurrentUserService` que declaramos aqui será implementado com `ClaimsPrincipal` do JWT. O `CustomerId` deixa de ser hardcoded e passa a vir do token.
+>
+> **Fase 05 (Mensageria):** Os Domain Event Handlers que criamos como loggers serão transformados em publishers de **Integration Events** via MassTransit. O `OrderCreatedDomainEvent` gerará um `OrderCreatedIntegrationEvent` que cruza fronteiras de serviço.
 
 ---
 

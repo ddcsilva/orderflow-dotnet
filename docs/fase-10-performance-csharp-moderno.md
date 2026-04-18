@@ -48,6 +48,11 @@
 
 ---
 
+> 🤔 **Pense antes de ler:**
+> 1. Como você **prova** que uma otimização realmente melhorou a performance? "Senti que ficou mais rápido" conta?
+> 2. `string.Concat` vs `StringBuilder` vs `string.Join` — quando cada um vence? A resposta depende de **quantos** strings?
+> 3. O que é **GC pressure** e por que `Span<T>` ajuda a reduzir? O que tem a ver com Gen0/Gen1/Gen2?
+
 ## 2. BenchmarkDotNet — O Padrão Industrial
 
 ```csharp
@@ -412,6 +417,29 @@ await _db.Orders
 await _db.Orders.Where(o => o.Status == OrderStatus.Cancelled)
     .ExecuteDeleteAsync(ct);
 ```
+
+---
+
+## ⚠️ Erros Comuns em Performance
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Otimizar sem medir** | Semanas gastas em código que representa 0.1% do tempo total | BenchmarkDotNet primeiro. Profile com dotnet-trace/dotnet-counters |
+| 2 | **`Span<T>` em contexto async** | Não compila — `Span<T>` é ref struct, não pode cruzar await | Use `Memory<T>` para async, `.Span` só em código síncrono |
+| 3 | **`ValueTask` awaited mais de uma vez** | Comportamento indefinido (pode retornar valor errado) | Await uma vez ou converta com `.AsTask()` |
+| 4 | **String interpolation em hot path** | Aloca string nova cada vez — GC pressure | Use `string.Create`, `StringBuilder`, ou `Span<char>` com `TryFormat` |
+| 5 | **LINQ em hot path sem medir** | `.Where().Select().ToList()` aloca iterators + lista | Para hot paths, considere `for` loop manual com array pre-alocado |
+| 6 | **`sealed` esquecido em classes que não serão herdadas** | JIT não pode devirtualizar calls — performance penalty sutil | Marque classes como `sealed` por default. Abra para herança intencionalmente |
+
+---
+
+## 🔧 Troubleshooting — Fase 10
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| Benchmark mostra resultados inconsistentes | Máquina com outros processos rodando, GC no meio | Use `[SimpleJob]` com warmup adequado. Feche programas desnecessários |
+| `dotnet-counters` mostra Gen2 GC frequente | Objetos grandes (>85KB) indo para LOH ou objetos de longa vida promovidos | Profile com `dotnet-gcdump`. Considere `ArrayPool<T>` e `ObjectPool<T>` |
+| `Span<T>` não compila em classe | Tentando armazenar `Span<T>` como campo | Span é stack-only. Use `Memory<T>` como campo |
 
 ---
 

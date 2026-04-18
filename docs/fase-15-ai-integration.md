@@ -51,6 +51,11 @@ Casos legítimos:
 
 ---
 
+> 🤔 **Pense antes de ler:**
+> 1. LLMs são **probabilísticos**. Como garantir que uma resposta de IA é confiável em contexto enterprise?
+> 2. O que é **RAG** e por que é preferível a fine-tuning para dados corporativos que mudam frequentemente?
+> 3. Se o LLM alucina (inventa dados), como você detecta e mitiga isso em produção?
+
 ## 2. Por Que Semantic Kernel
 
 | Opção | Pros | Contras |
@@ -369,6 +374,31 @@ LLM **inventa fatos** com confiança. Mitigações:
 
 **Heurística:**
 > *"Se você consegue escrever as regras explicitamente, não use LLM. LLM brilha em **ambiguidade** e **linguagem natural** — paga caro por isso."*
+
+---
+
+## ⚠️ Erros Comuns em Integração com IA
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Confiar cegamente na resposta do LLM** | Alucinação → dados errados em produção | Sempre valide output do LLM. Use guardrails, schema validation, human-in-the-loop |
+| 2 | **Embedding sem chunking adequado** | Documento inteiro como um vetor → retrieval impreciso | Chunk por parágrafo/seção (256-512 tokens). Overlap de 10-20% entre chunks |
+| 3 | **Prompt sem contexto de domínio** | LLM responde genericamente, sem usar seus dados | RAG: busque documentos relevantes e injete no prompt como contexto |
+| 4 | **API key do OpenAI hardcoded** | Vaza no Git → fatura surpresa de milhares de dólares | Use `user-secrets` em dev, Key Vault em produção. Nunca commite keys |
+| 5 | **LLM para regras determinísticas** | Caro, lento e inconsistente para validações simples | Use LLM para ambiguidade/NLP. Validações/cálculos → código tradicional |
+| 6 | **Sem rate limiting para LLM calls** | Usuário abusa → custo explode (LLM cobra por token) | Rate limit por usuário. Cache respostas para queries repetidas |
+
+---
+
+## 🔧 Troubleshooting — Fase 15
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| "Model not found" ou 404 | Model name errado ou deployment não existe no Azure OpenAI | Verifique `DeploymentName` no Semantic Kernel config |
+| Embedding retorna vetor de dimensão errada | Modelo de embedding diferente do esperado pelo vector DB | Alinhe: `text-embedding-3-small` = 1536 dims |
+| RAG retorna documentos irrelevantes | Chunks muito grandes ou embedding model inadequado | Reduza chunk size. Teste com queries de exemplo |
+| Resposta do LLM em idioma errado | System prompt não especifica idioma | Adicione "Responda sempre em português brasileiro" no system prompt |
+| Timeout na chamada ao LLM | Prompt muito longo ou model overloaded | Reduza contexto. Use `max_tokens` para limitar resposta. Configure timeout adequado |
 
 ---
 

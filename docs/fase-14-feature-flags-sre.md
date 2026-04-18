@@ -46,6 +46,11 @@ Vagas Sênior 2026 cobram cada vez mais práticas de **engenharia de confiabilid
 
 ---
 
+> 🤔 **Pense antes de ler:**
+> 1. Qual a diferença entre **deploy** e **release**? Por que seprar os dois é tão poderoso?
+> 2. Se um SLO é 99.9%, quanto downtime por mês você pode ter? (Faça a conta.)
+> 3. O que é um **postmortem blameless** e por que culpar pessoas é contraproducente?
+
 ## 2. Feature Flags — Desacoplar Deploy de Release
 
 **Tese:** deploy é mecânico (sobe código); release é estratégico (libera para usuário). Feature flags separam os dois.
@@ -423,6 +428,30 @@ Engenheiro X seguiu o processo existente. O processo precisa evoluir.
 - Foco em **sistema/processo**, não pessoas
 - Ações **acionáveis** com owner + prazo
 - Compartilhar amplamente — todo time aprende
+
+---
+
+## ⚠️ Erros Comuns em Feature Flags e SRE
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Feature flag permanente** | Código cheio de `if (featureEnabled)` — complexidade acidental | Flags de release devem ter TTL. Remova após rollout completo |
+| 2 | **Flag sem fallback** | Serviço de feature flags cai → exceção em runtime | Sempre defina valor default: `if (await featureManager.IsEnabledAsync("NewCheckout") ?? false)` |
+| 3 | **SLO sem SLI** | Meta sem métrica = meta impossível de verificar | Defina o SLI primeiro (ex: latência p99), depois o SLO (ex: < 200ms) |
+| 4 | **Alerta em toda métrica** | Alert fatigue → equipe ignora alertas reais | Alerte apenas em **SLO burn rate**. Dashboards para o resto |
+| 5 | **Postmortem blameful** | Pessoas escondem erros → incidentes se repetem | Foque em **sistema**, não em pessoas. "O que permitiu que isso acontecesse?" |
+| 6 | **Canary release sem rollback automático** | Canary com erros continua recebendo tráfego | Configure rollback automático baseado em error rate threshold |
+
+---
+
+## 🔧 Troubleshooting — Fase 14
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| Feature flag sempre retorna false | Filtro de targeting não configurado ou user context vazio | Verifique `ITargetingContextAccessor` retorna `UserId` correto |
+| Grafana dashboard "No data" | Prometheus não scraping a aplicação | Verifique `prometheus.yml` targets e firewall |
+| SLO burn rate alert disparando sem causa | Threshold muito sensível | Ajuste janela de avaliação (use multi-window: 1h + 6h) |
+| Postmortem sem ações úteis | Template ruim ou cultura de blame | Use template estruturado: Timeline → Root Cause → Action Items com owner |
 
 ---
 

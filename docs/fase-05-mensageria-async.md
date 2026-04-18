@@ -76,6 +76,13 @@ src/Services/Notifications/
 
 ## 2. Decisões Arquiteturais
 
+> 🤔 **Pense antes de ler:**
+> 1. O que acontece se o serviço de notificação está fora do ar quando um pedido é confirmado? O evento se perde?
+> 2. Por que o **Outbox Pattern** grava o evento na mesma transação do aggregate? O que impede `SaveChanges` + `Publish` de dessincronizar?
+> 3. Se uma mensagem é entregue duas vezes (at-least-once), como o consumidor evita processar duplicatas?
+>
+> Mensageria é o sistema nervoso dos microserviços. As decisões abaixo explicam como garantir que nenhum impulso se perde.
+
 ### ADR-011: MassTransit sobre RabbitMQ Client Puro
 
 > 🧠 **Analogia — O Motorista de App vs Carro Próprio:** Usar `RabbitMQ.Client` direto é como ter **carro próprio**: você controla tudo (motor, rota, velocidade), mas também cuida de tudo (mecânico, seguro, multa). MassTransit é como usar um **app de transporte**: você diz "quero ir do ponto A ao B" e ele cuida da rota, retry se o motorista cancelar, aviso se houve problema, e você troca de empresa (de RabbitMQ para Azure Service Bus) sem mudar seu hábito. Para 99% dos projetos .NET, o app é a escolha certa.
@@ -872,9 +879,44 @@ public class OrderCreatedDomainEventHandlerTests
 
 ---
 
-## 7. Checkpoint
+## ⚠️ Erros Comuns em Mensageria
 
-> 💡 **Por que isso importa no dia-a-dia?** Mensageria é o que separa **monólitos acoplados** de **sistemas distribuídos resilientes**. Sem mensageria, se o serviço de notificação cai enquanto um pedido é confirmado, o cliente nunca recebe email. Com mensageria + outbox, o evento fica na fila esperando o serviço voltar — **zero perda de dados**. Em entrevistas sênior, a pergunta não é "você sabe usar RabbitMQ?" — é "como você garante que nenhum evento se perde entre serviços?". A resposta é Outbox + idempotência.
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Publish fora da transação do Outbox** | Evento publicado mas aggregate não salvo (ou vice-versa) — dessincronização | MassTransit Outbox faz publish + SaveChanges na mesma transação |
+| 2 | **Consumer sem idempotência** | Mensagem reenviada (retry) processa pedido duas vezes | Guarde `MessageId` ou `OrderId` em tabela de deduplicação. Verifique antes de processar |
+| 3 | **Serializar Entity inteira como evento** | Integration Event fica enorme, acoplado ao domínio, quebra se schema muda | Use DTOs mínimos: apenas IDs e dados necessários para o consumidor |
+| 4 | **Fila sem Dead Letter Queue (DLQ)** | Mensagens com erro permanente ficam em loop de retry infinito | Configure `_retryCount` e DLQ. Monitore a DLQ com alerta |
+| 5 | **Consumer bloqueante (sync over async)** | Thread pool saturado, throughput despenca | Todo consumer deve ser `async Task`. Nunca use `.Result` ou `.Wait()` |
+| 6 | **Não configurar prefetch count** | Default alto = consumer pega 100 mensagens e processa 1 por vez, bloqueando outras instâncias | Configure prefetch proporcional à capacidade de processamento |
+
+---
+
+## 🔧 Troubleshooting — Fase 05
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| "RabbitMQ connection refused" | Container RabbitMQ não subiu ou porta errada | `docker compose ps` → verifique se rabbitmq está healthy. Porta padrão: 5672 (AMQP), 15672 (management) |
+| Mensagens na fila mas consumer não processa | Consumer não registrado no MassTransit ou fila com nome diferente | Verifique `cfg.ReceiveEndpoint("order-created", ...)` bate com o nome da fila no RabbitMQ Management UI |
+| Outbox publica mas mensagem não chega | `OutboxDeliveryService` não está rodando (hosted service) | Verifique `AddEntityFrameworkOutbox` + `UseInMemoryOutbox()` ou `UseDbContext<>()` |
+| "Skipping duplicate message" | Idempotência funcionando — mensagem já processada | Comportamento correto. Se inesperado, verifique se producer está duplicando publish |
+| Consumer consome mas exceção em loop | Mensagem com payload inválido + retry infinito | Configure `UseMessageRetry(r => r.Interval(3, 1000))` + Dead Letter após falhas |
+
+---
+
+## 🔗 Conectando os Pontos
+
+| Artefato | Origem | Transformação nesta fase |
+|---------|--------|------------------------|
+| `OrderConfirmedDomainEvent` | Fase 02 Domain | Agora gera `OrderConfirmedIntegrationEvent` publicado via MassTransit |
+| `DomainEventInterceptor` | Fase 03 EF Core | Interceptor captura domain events e publica como integration events |
+| Identity JWT | Fase 04 | `UserId` incluído como metadata nos eventos para rastreabilidade |
+
+> **Preview Fase 06:** Os traces do OpenTelemetry capturarão mensagens publicadas e consumidas, permitindo visualizar o fluxo completo no Jaeger: HTTP request → command handler → publish → RabbitMQ → consumer.
+
+---
+
+## 7. Checkpoint Sem mensageria, se o serviço de notificação cai enquanto um pedido é confirmado, o cliente nunca recebe email. Com mensageria + outbox, o evento fica na fila esperando o serviço voltar — **zero perda de dados**. Em entrevistas sênior, a pergunta não é "você sabe usar RabbitMQ?" — é "como você garante que nenhum evento se perde entre serviços?". A resposta é Outbox + idempotência.
 
 ### Validação Completa
 

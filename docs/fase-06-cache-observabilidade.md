@@ -70,6 +70,13 @@ docker-compose.yml
 
 ## 2. Decisões Arquiteturais
 
+> 🤔 **Pense antes de ler:**
+> 1. Cache de **output** (resposta HTTP inteira) vs cache de **dados** (objetos no Redis) — quando usar cada um?
+> 2. Se duas instâncias da mesma API estão rodando, por que `IMemoryCache` (in-process) não funciona para ambas?
+> 3. Como saber se uma request está lenta por causa do banco, do serviço externo, ou do próprio código? (Dica: distributed tracing.)
+>
+> Cache sem observabilidade é otimização às cegas. Observabilidade sem cache é diagnóstico sem cura. Juntos, são o kit de sobrevivência em produção.
+
 ### ADR-014: Redis como Cache Distribuído
 
 > 🧠 **Analogia — A Agenda de Contatos no Celular:** Quando você precisa ligar pra alguém, não abre a lista telefônica da cidade toda vez (ir ao banco de dados). Você olha seus **contatos salvos** (cache). Se o número está lá, liga direto (cache HIT, < 1ms). Se não, pesquisa na lista, encontra, salva no celular e liga (cache MISS → consulta banco → salva no cache). Redis é essa agenda: rápido (in-memory), compartilhado entre dispositivos (distribuído) e com espaço limitado (eviction policy expulsa os contatos menos usados).
@@ -801,6 +808,44 @@ public class HealthCheckTests : IClassFixture<WebApplicationFactory<Program>>
     }
 }
 ```
+
+---
+
+## ⚠️ Erros Comuns em Cache e Observabilidade
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Cache sem TTL** | Dados ficam eternamente em cache — stale data para sempre | Sempre defina `AbsoluteExpirationRelativeToNow` ou `SlidingExpiration` |
+| 2 | **Invalidar cache com `Remove` em vez de TTL** | Múltiplas instâncias: uma invalida, outra ainda serve o cache antigo | Prefira TTL curto + eventual consistency. Se precisa de consistência forte, use Redis Pub/Sub para invalidação |
+| 3 | **Cache stampede** | TTL expira → 100 requests simultâneas vão ao banco | Use lock local ou `SemaphoreSlim` antes de popular o cache. MassTransit/Redis tem `DistributedLock` |
+| 4 | **Logs sem correlation ID** | Impossível rastrear uma request across serviços | OpenTelemetry propaga `TraceId` automaticamente. Adicione `Activity.Current?.TraceId` nos logs |
+| 5 | **Métricas sem labels** | `http_requests_total` sem `endpoint`, `status_code` = número inútil | Use labels/tags: `http_requests_total{endpoint="/api/orders", status="200"}` |
+| 6 | **Output cache em endpoints com dados do usuário** | Usuário A vê dados do Usuário B | Output cache só para dados públicos. Para dados privados, use `VaryByHeader("Authorization")` ou não use output cache |
+
+---
+
+## 🔧 Troubleshooting — Fase 06
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| Redis connection timeout | Container não subiu ou connection string errada | `docker compose ps redis`. Connection string: `localhost:6379` (dev) |
+| Cache HIT rate = 0% | Chave do cache diferente entre get e set (typo ou formato) | Padronize: `$"product:{productId}"`. Log a chave usada no get e no set |
+| Jaeger não mostra traces | `OTEL_EXPORTER_OTLP_ENDPOINT` não configurado ou serviço não instrumentado | Verifique `AddOtlpExporter()` e `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` |
+| Traces aparecem mas sem spans do EF Core | Instrumentação do EF Core não adicionada | `AddEntityFrameworkCoreInstrumentation()` no OpenTelemetry setup |
+| Prometheus `/metrics` retorna 404 | Endpoint não mapeado | Verifique `app.MapPrometheusScrapingEndpoint()` no pipeline |
+| Grafana "No data" nos dashboards | Prometheus não scraping ou datasource não configurado | Verifique `prometheus.yml` targets e Grafana datasource URL |
+
+---
+
+## 🔗 Conectando os Pontos
+
+| Artefato | Origem | Transformação nesta fase |
+|---------|--------|------------------------|
+| Dapper queries | Fase 03 CQRS | Agora instrumentadas com traces — spans mostram tempo de cada query |
+| MassTransit publish/consume | Fase 05 | Traces propagados entre publisher → RabbitMQ → consumer (distributed tracing) |
+| Health checks | Fase 01 | Agora incluem Redis + RabbitMQ + SQL Server (health check completo) |
+
+> **Preview Fase 07:** O Gateway YARP centralizará métricas de todas as APIs em um único ponto. O Grafana dashboard mostrará latência por rota do gateway, não por serviço individual.
 
 ---
 

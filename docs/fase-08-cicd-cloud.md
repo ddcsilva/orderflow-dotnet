@@ -67,6 +67,13 @@ docs/
 
 ## 2. Decisões Arquiteturais
 
+> 🤔 **Pense antes de ler:**
+> 1. Por que usar **OIDC federation** em vez de secrets estáticos (`AZURE_CREDENTIALS`) para autenticar no Azure?
+> 2. Se um teste falha no CI, o deploy deve ser bloqueado. Onde exatamente no workflow YAML isso é configurado?
+> 3. Infraestrutura como Código (Bicep): por que declarar recursos no código em vez de criar pelo portal do Azure?
+>
+> CI/CD é a diferença entre "deploy manual com medo" e "merge com confiança". As decisões abaixo mostram como.
+
 ### ADR-019: GitHub Actions para CI/CD
 
 > 🧠 **Analogia — A Linha de Montagem da Fábrica:** Antigamente, cada carro era montado à mão — lento, inconsistente, sujeito a erros humanos. Henry Ford criou a **linha de montagem**: cada estação faz uma tarefa específica (soldar, pintar, testar) e o carro avança automaticamente. Se alguma estação detecta defeito, a linha **para**. CI/CD é a linha de montagem do software: build → test → analyze → publish → deploy. Cada push dispara a esteira. Se um teste falha, o deploy não acontece. **Nenhum humano toca no botão de deploy — a pipeline faz tudo.**
@@ -1190,6 +1197,46 @@ public class GatewayHealthTests
     }
 }
 ```
+
+---
+
+## ⚠️ Erros Comuns em CI/CD e Cloud
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Secrets hardcoded no workflow YAML** | Credenciais vazam no histórico do Git | Use `${{ secrets.NOME }}`. Nunca coloque valores reais em YAML |
+| 2 | **Não usar OIDC federation** | Secrets estáticos podem vazar ou expirar sem aviso | Configure Federated Credentials no Azure AD + `azure/login@v2` com OIDC |
+| 3 | **Pipeline sem cache de packages** | Cada build baixa todos os NuGet packages (~2-5 min desperdiçados) | `actions/cache@v4` com key baseada em hash dos `.csproj` |
+| 4 | **Deploy para produção sem approval gate** | Merge acidental no main faz deploy direto | Use GitHub Environments com `required_reviewers` para produção |
+| 5 | **Bicep sem `@secure()` em parâmetros sensíveis** | Senha do SQL aparece no log do deployment | `@secure() param sqlAdminPassword string`. Passe via `--parameters` no CLI |
+| 6 | **Não rodar testes no CI** | "Funciona local" mas quebra em produção por diferença de ambiente | `dotnet test` como step obrigatório. Falha = pipeline bloqueada |
+| 7 | **`checkout@v3` em vez de `@v5`** | Versão antiga usa Node 16 (deprecated), warnings no CI | Use `actions/checkout@v5` (Node 20) |
+
+---
+
+## 🔧 Troubleshooting — Fase 08
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| "AADSTS700016: Application not found" | App Registration do OIDC com ID errado ou tenant errado | Verifique `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` nos secrets |
+| Docker push falha com "unauthorized" | `docker/login-action` não executou ou ACR credentials errados | Verifique `az acr login` ou use `azure/docker-login@v2` |
+| Bicep deploy "resource already exists" | Nome do recurso não é globalmente único (Storage Account, ACR) | Use prefixo único: `orderflow${uniqueString(resourceGroup().id)}` |
+| GitHub Actions workflow não dispara | Trigger errado ou branch protection bloqueando | Verifique `on: push: branches: [main]` e se o branch existe |
+| Testes passam local mas falham no CI | Diferença de ambiente (connection string, timezone, OS) | Use container services no CI: `services: sqlserver: image: mcr.microsoft.com/mssql/server:2022-latest` |
+| "Error: Process completed with exit code 1" sem detalhes | Output truncado | Adicione `--verbosity detailed` ao `dotnet` command |
+
+---
+
+## 🔗 Conectando os Pontos
+
+| Artefato | Origem | Transformação nesta fase |
+|---------|--------|------------------------|
+| Dockerfiles multi-stage | Fase 07 | Pipeline builda e pusha para Azure Container Registry |
+| Docker Compose | Fase 07 | Usado no CI para subir infra de testes de integração |
+| Health checks | Fases 01, 06, 07 | Pipeline verifica `/health` após deploy para validar |
+| Testes (unit + integration) | Fases 02, 03, 05 | Executados como gate obrigatório antes de deploy |
+
+> **Preview Fases 09-15:** A partir daqui, o pipeline está pronto. Cada nova feature (resiliência, performance, K8s, OAuth2, gRPC, feature flags, AI) será adicionada ao mesmo fluxo: code → push → build → test → deploy. O CI/CD é a espinha dorsal — tudo que você construir nas próximas fases passará por ele.
 
 ---
 

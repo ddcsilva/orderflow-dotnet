@@ -46,6 +46,11 @@ Resultado: o Orders **degrada graciosamente** em vez de cair.
 
 ---
 
+> 🤔 **Pense antes de ler:**
+> 1. Se uma API externa demora 30s para responder, o que acontece com as 500 requests que estão esperando? E com o pool de threads?
+> 2. Retry resolve **tudo**? Quando retry *piora* a situação? (Dica: pense no serviço destino sobrecarregado.)
+> 3. Circuit Breaker Open → Half-Open → Closed: por que existe o estado **Half-Open** em vez de ir direto para Closed?
+
 ## 2. Polly v7 → v8: O Que Mudou
 
 A API mudou completamente. Se você ainda usa `Policy.Handle<>().Retry(...)`, está em v7 (modo manutenção).
@@ -422,6 +427,29 @@ new CircuitBreakerStrategyOptions { FailureRatio = 0.5 }  // sem MinimumThroughp
 services.AddResiliencePipeline<string, HttpResponseMessage>("global", ...);
 ```
 ✅ Uma pipeline **por dependência** — cada uma tem seu CB.
+
+---
+
+## ⚠️ Erros Comuns em Resiliência
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Retry sem jitter** | 100 clients fazem retry ao mesmo tempo → thundering herd | `UseJitter = true` ou `BackoffType = ExponentialWithJitter` |
+| 2 | **Circuit Breaker com threshold muito alto** | CB só abre após 1000 falhas — dano já feito | Configure `FailureRatio` razoável (0.5) com `MinimumThroughput` (20) |
+| 3 | **Retry em erros não-transientes** | 404 Not Found não vai virar 200 com retry — desperdício | Filtre: `ShouldHandle = new PredicateBuilder().Handle<HttpRequestException>(ex => ex.StatusCode >= 500)` |
+| 4 | **Timeout sem cancelamento** | Timeout expira mas operação continua rodando no background | Propague `CancellationToken` do Polly. Use `TimeoutStrategy.Optimistic` |
+| 5 | **Uma pipeline para todas as dependências** | CB do serviço A abre e bloqueia chamadas ao serviço B | Pipeline separada por dependência (keyed DI) |
+
+---
+
+## 🔧 Troubleshooting — Fase 09
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| Circuit Breaker nunca abre | `MinimumThroughput` maior que o tráfego real | Reduza para valor compatível com seu volume |
+| "The circuit breaker is open" em todos os endpoints | Pipeline compartilhada entre dependências | Use pipeline separada (por named HttpClient) |
+| Retry loop infinito | `MaxRetryAttempts = int.MaxValue` ou sem `MaxRetryAttempts` | Defina limite explícito (3-5 retries) |
+| Timeout não funciona | `TimeoutStrategy.Pessimistic` mas operação não respeita token | Use `Optimistic` + propague `CancellationToken` |
 
 ---
 

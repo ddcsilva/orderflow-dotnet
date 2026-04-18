@@ -48,6 +48,11 @@ A Fase 04 implementou JWT manualmente — bom para aprender, **inseguro para pro
 
 ---
 
+> 🤔 **Pense antes de ler:**
+> 1. OAuth2 é **autorização**, não autenticação. Então como "Login com Google" funciona se OAuth não autentica? (Dica: OIDC.)
+> 2. Por que **Implicit Flow foi removido** do OAuth 2.1? O que PKCE resolve que Implicit não resolvia?
+> 3. Se o `access_token` vaza, o atacante tem acesso total. Como **scopes** e **audiences** limitam o dano?
+
 ## 2. OAuth2 vs OIDC — Diferença Real
 
 | | OAuth 2.1 | OIDC |
@@ -368,6 +373,30 @@ if (!auth.Succeeded) return Forbid();
 | **OpenIddict** | Alternativa gratuita ao Duende, mais lib que produto, curva maior |
 
 > **ADR sugerido:** documentar essa decisão é exatamente o tipo de coisa que diferencia portfólio sênior.
+
+---
+
+## ⚠️ Erros Comuns em OAuth2/OIDC
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Implicit Flow para SPA** | Token na URL → vaza em logs, referer, histórico | Use Authorization Code + PKCE. OAuth 2.1 removeu Implicit |
+| 2 | **`client_secret` em SPA ou app mobile** | Secret não pode ser protegido em client-side → vaza | Public client + PKCE. Secret só para confidential clients (backend) |
+| 3 | **Scopes muito amplos** | Token com `scope=*` → atacante ganha acesso total | Princípio do menor privilégio: `scope=orders:read orders:write` |
+| 4 | **Não validar `nonce` no id_token** | Replay attack possível | Gere nonce por request, valide no id_token retornado |
+| 5 | **Consent screen genérica** | Usuário não entende o que está autorizando | Liste permissões específicas: "Acessar seus pedidos", não "Acessar sua conta" |
+
+---
+
+## 🔧 Troubleshooting — Fase 12
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| "invalid_client" no token endpoint | ClientId/Secret errados ou client não registrado | Verifique configuração do client no Duende IdentityServer |
+| "invalid_scope" | Scope solicitado não está nos `AllowedScopes` do client | Adicione o scope no client config E no ApiScope/ApiResource |
+| PKCE falha com "invalid_grant" | `code_verifier` não bate com `code_challenge` enviado na authorize | Verifique implementação SHA256 do challenge |
+| Redirect loop no login | `RedirectUri` não registrada no client | Adicione a URI exata (com trailing slash se necessário) em `RedirectUris` |
+| id_token sem claims esperadas | Scopes `profile`/`email` não solicitados ou Identity Resources não configurados | Adicione `openid profile email` nos scopes E configure `IdentityResources` |
 
 ---
 

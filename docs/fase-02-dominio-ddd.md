@@ -192,6 +192,13 @@ Entities são comparadas por **identidade** (Id). Dois orders com dados idêntic
 
 ## 3. Conceitos de DDD
 
+> 🤔 **Pense antes de ler:**
+> 1. O que impede alguém de criar uma Order com TotalAmount = -500? Quem deveria impedir — o banco de dados, o controller, ou o próprio objeto Order?
+> 2. Se `Money` é imutável, como você "muda" o preço de um item? (Dica: você não muda — cria um novo.)
+> 3. Por que `order.Cancel(reason)` é melhor que `order.Status = "Cancelled"`?
+>
+> Se você respondeu "o próprio objeto Order" para a pergunta 1, você já pensa em termos de DDD. O domínio rico coloca as regras **dentro** dos objetos, não espalhadas em services e controllers.
+
 > 💡 **Antes de mergulhar no código:** DDD não é sobre patterns — é sobre **falar a língua do negócio** no código. Se o Product Owner diz "o cliente *cancela* o pedido", seu código deve ter `order.Cancel(reason)`, não `orderService.UpdateStatus(order, "cancelled")`. Os patterns abaixo (Aggregate, Value Object, Domain Event) são **ferramentas** para construir esse código expressivo.
 
 ### Aggregate Root
@@ -341,6 +348,8 @@ public abstract class ValueObject : IEquatable<ValueObject>
     public static bool operator !=(ValueObject? left, ValueObject? right) => !(left == right);
 }
 ```
+
+> 🤔 **"Por que não usar `record` para Value Objects?"** C# `record` já tem value equality built-in — por que essa classe base? Boas razões: (1) `record` compara **todas** as propriedades automaticamente — sem controle sobre *quais* componentes participam da igualdade. (2) Com `GetEqualityComponents()`, você pode excluir campos derivados ou incluir lógica customizada. (3) `record` não integra facilmente com EF Core Owned Types (precisa de construtores específicos). (4) A classe base fornece **consistência** — todo VO do projeto segue o mesmo padrão. **Dito isso:** para VOs simples (2-3 propriedades, sem lógica), `record struct` é perfeitamente válido e mais conciso.
 
 ### 5.2 Domain Exceptions
 
@@ -1427,6 +1436,122 @@ public class AddressTests
     }
 }
 ```
+
+---
+
+## ⚠️ Erros Comuns em DDD
+
+> Estes são os erros mais frequentes na primeira implementação de um domínio rico. Cada um deles é um padrão que já queimou projetos reais.
+
+| # | Erro | Por Que é Perigoso | Como Evitar |
+|---|---|---|---|
+| 1 | **Aggregate muito grande** — colocar Product, Customer e Order no mesmo aggregate | Lock contention em transações, performance degradada, serialização gigante | Um aggregate = uma boundary de consistência. Se não precisa ser consistente *atomicamente*, são aggregates separados |
+| 2 | **Expor `List<OrderItem>` como propriedade pública** | Qualquer código externo pode `.Add()`, `.Clear()`, `.Remove()` — bypassando validações do aggregate | Use `IReadOnlyCollection<T>` para leitura. Mutações só via métodos do aggregate (`AddItem`, `RemoveItem`) |
+| 3 | **Value Object com setter público** | Destrói imutabilidade, quebra equality (dois VOs "iguais" podem mudar independentemente) | Properties devem ser `init` ou no setter. Mudança = criar nova instância |
+| 4 | **Domain Event com lógica** | Eventos devem ser DTOs imutáveis que registram *o que aconteceu* — não ter comportamento | Use `sealed record` para eventos. Lógica fica nos handlers |
+| 5 | **Testar com `new Order()` direto** | Cria objeto em estado potencialmente inválido, bypassa factory method | Sempre use `Order.Create(...)` nos testes. Se não compila com `new`, é feature — não bug |
+| 6 | **Status como `string` em vez de enum/VO** | `"Pending"`, `"pending"`, `"PENDING"`, `"peding"` — tipografia é o inimigo | Use enum ou Value Object com transições validadas. `OrderStatus.Pending` é type-safe |
+
+### O Que Acontece Quando Você Viola uma Invariante
+
+> 💡 **Exemplo prático:** Quando alguém tenta confirmar um pedido sem itens, o domínio lança `OrderDomainException("Cannot confirm order without items")`. Na Fase 03, o middleware de exceção converte isso em HTTP 400:
+> ```json
+> {
+>   "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+>   "title": "Domain Error",
+>   "status": 400,
+>   "detail": "Cannot confirm order without items."
+> }
+> ```
+> O controller **nunca** precisa verificar se há itens — o domínio garante. Essa é a essência do Rich Domain Model.
+
+---
+
+## 🔧 Troubleshooting — Fase 02
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| Teste falha: `DomainEvents.Should().ContainSingle()` retorna 0 eventos | `ClearDomainEvents()` chamado no helper sem perceber, ou factory method não emite evento | Verifique se `Order.Create(...)` chama `AddDomainEvent(new OrderCreatedDomainEvent(...))` |
+| `OrderNumber.Create()` gera duplicatas | 5 chars hex = ~1M combinações — colisão possível em alto volume | Para produção, use sequência do banco ou algoritmo com timestamp. A implementação didática é simplificada intencionalmente |
+| "Cannot access private constructor" no EF Core | EF Core precisa de construtor sem parâmetros | Adicione `private Order() { }` — EF usa reflection para instanciar |
+| Money equality falha no teste | `GetEqualityComponents()` não implementado, ou comparando com `==` sem override de operador | Verifique se `ValueObject` base class tem `operator ==` e `GetHashCode` corretos |
+| "EF Core dá erro ao mapear Money" | Owned Types não configurados ainda | A persistência dos VOs será configurada na **Fase 03** com `OwnsOne<Money>(...)`. Se tentou rodar antes, é normal |
+
+---
+
+## 🔗 Conectando os Pontos
+
+### O que veio da Fase 01 e usamos aqui
+
+| Da Fase 01 | Usado como |
+|-----------|-----------|
+| `Entity` base class | `OrderItem` herda de `Entity` (tem identidade) |
+| `AuditableEntity` | Poderia ser usado se quiséssemos `CreatedAt` auto |
+| `IDomainEvent` | Todos os events (`OrderCreatedDomainEvent`, etc.) implementam |
+| `IRepository<T>` | `IOrderRepository` herda e adiciona métodos específicos |
+| `IUnitOfWork` | Será usado na Fase 03 para commit transacional |
+
+### Preview: O que vem na Fase 03
+
+> Na Fase 03, esses Domain Events que criamos serão **publicados via MediatR**. Os Value Objects serão **mapeados para SQL Server via EF Core Owned Types** (`OwnsOne<Money>(...)`). O `IOrderRepository` ganhará uma implementação concreta. E a separação leitura/escrita (CQRS) permitirá queries SQL puras via Dapper para performance máxima. **O domínio que construímos aqui é o coração — a Fase 03 dá vida a ele.**
+
+---
+
+## ⚠️ Erros Comuns em DDD
+
+> Estes são os erros mais frequentes na primeira implementação de um domínio rico. Cada um deles é um padrão que já queimou projetos reais.
+
+| # | Erro | Por Que é Perigoso | Como Evitar |
+|---|---|---|---|
+| 1 | **Aggregate muito grande** — colocar Product, Customer e Order no mesmo aggregate | Lock contention em transações, performance degradada, serialização gigante | Um aggregate = uma boundary de consistência. Se não precisa ser consistente *atomicamente*, são aggregates separados |
+| 2 | **Expor `List<OrderItem>` como propriedade pública** | Qualquer código externo pode `.Add()`, `.Clear()`, `.Remove()` — bypassando validações do aggregate | Use `IReadOnlyCollection<T>` para leitura. Mutações só via métodos do aggregate (`AddItem`, `RemoveItem`) |
+| 3 | **Value Object com setter público** | Destrói imutabilidade, quebra equality (dois VOs "iguais" podem mudar independentemente) | Properties devem ser `init` ou no setter. Mudança = criar nova instância |
+| 4 | **Domain Event com lógica** | Eventos devem ser DTOs imutáveis que registram *o que aconteceu* — não ter comportamento | Use `sealed record` para eventos. Lógica fica nos handlers |
+| 5 | **Testar com `new Order()` direto** | Cria objeto em estado potencialmente inválido, bypassa factory method | Sempre use `Order.Create(...)` nos testes. Se não compila com `new`, é feature — não bug |
+| 6 | **Status como `string` em vez de enum/VO** | `"Pending"`, `"pending"`, `"PENDING"`, `"peding"` — tipografia é o inimigo | Use enum ou Value Object com transições validadas. `OrderStatus.Pending` é type-safe |
+
+### O Que Acontece Quando Você Viola uma Invariante
+
+> 💡 **Exemplo prático:** Quando alguém tenta confirmar um pedido sem itens, o domínio lança `OrderDomainException("Cannot confirm order without items")`. Na Fase 03, o middleware de exceção converte isso em HTTP 400:
+> ```json
+> {
+>   "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+>   "title": "Domain Error",
+>   "status": 400,
+>   "detail": "Cannot confirm order without items."
+> }
+> ```
+> O controller **nunca** precisa verificar se há itens — o domínio garante. Essa é a essência do Rich Domain Model.
+
+---
+
+## 🔧 Troubleshooting — Fase 02
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| Teste falha: `DomainEvents.Should().ContainSingle()` retorna 0 eventos | `ClearDomainEvents()` chamado no helper sem perceber, ou factory method não emite evento | Verifique se `Order.Create(...)` chama `AddDomainEvent(new OrderCreatedDomainEvent(...))` |
+| `OrderNumber.Create()` gera duplicatas | 5 chars hex = ~1M combinações — colisão possível em alto volume | Para produção, use sequência do banco ou algoritmo com timestamp. A implementação didática é simplificada intencionalmente |
+| "Cannot access private constructor" no EF Core | EF Core precisa de construtor sem parâmetros | Adicione `private Order() { }` — EF usa reflection para instanciar |
+| Money equality falha no teste | `GetEqualityComponents()` não implementado, ou comparando com `==` sem override de operador | Verifique se `ValueObject` base class tem `operator ==` e `GetHashCode` corretos |
+| "EF Core dá erro ao mapear Money" | Owned Types não configurados ainda | A persistência dos VOs será configurada na **Fase 03** com `OwnsOne<Money>(...)`. Se tentou rodar antes, é normal |
+
+---
+
+## 🔗 Conectando os Pontos
+
+### O que veio da Fase 01 e usamos aqui
+
+| Da Fase 01 | Usado como |
+|-----------|-----------|
+| `Entity` base class | `OrderItem` herda de `Entity` (tem identidade) |
+| `AuditableEntity` | Poderia ser usado se quiséssemos `CreatedAt` auto |
+| `IDomainEvent` | Todos os events (`OrderCreatedDomainEvent`, etc.) implementam |
+| `IRepository<T>` | `IOrderRepository` herda e adiciona métodos específicos |
+| `IUnitOfWork` | Será usado na Fase 03 para commit transacional |
+
+### Preview: O que vem na Fase 03
+
+> Na Fase 03, esses Domain Events que criamos serão **publicados via MediatR**. Os Value Objects serão **mapeados para SQL Server via EF Core Owned Types** (`OwnsOne<Money>(...)`). O `IOrderRepository` ganhará uma implementação concreta. E a separação leitura/escrita (CQRS) permitirá queries SQL puras via Dapper para performance máxima. **O domínio que construímos aqui é o coração — a Fase 03 dá vida a ele.**
 
 ---
 

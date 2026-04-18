@@ -55,6 +55,11 @@
 
 ---
 
+> 🤔 **Pense antes de ler:**
+> 1. REST usa JSON (texto). gRPC usa Protobuf (binário). Além do tamanho, quais são as **outras** vantagens de contratos tipados?
+> 2. Kafka vs RabbitMQ: um é **fila**, outro é **log**. O que isso muda na prática para replay de eventos?
+> 3. Event Sourcing guarda **todos os eventos** em vez do estado atual. Quando isso é overkill e quando é essencial?
+
 ## 2. Definindo Contratos com Protobuf
 
 `Protos/catalog.proto`:
@@ -407,6 +412,31 @@ Use a tabela Outbox como **fonte de verdade** dos eventos de domínio (em vez de
 | **Quando começar** | Sempre que precisar de eventos transacionais | Ao escalar Outbox além de ~10k events/s | Domínio com auditoria forte ou múltiplas projections |
 
 > **Regra prática:** **Outbox** sempre. Adicione **CDC** quando Outbox virar gargalo. **Event Sourcing** apenas se o domínio exigir.
+
+---
+
+## ⚠️ Erros Comuns em gRPC, Kafka e Event Sourcing
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Expor gRPC diretamente para browser** | gRPC requer HTTP/2 frames — browsers não suportam nativamente | Use gRPC-Web como proxy ou mantenha REST para externos, gRPC apenas interno |
+| 2 | **Proto file sem versionamento** | Mudança breaking quebra todos os consumers | Versionamento por package: `package catalog.v2;`. Nunca remova fields, apenas deprecie |
+| 3 | **Kafka consumer sem idempotência** | At-least-once delivery → processamento duplicado | Guarde offset processado ou use chave de deduplicação (EventId) |
+| 4 | **Event Sourcing sem snapshots** | Aggregate com 10.000 eventos → reconstrução lenta | Snapshot a cada N eventos. Carregue snapshot + eventos posteriores |
+| 5 | **Misturar Event Sourcing com CRUD no mesmo aggregate** | Estado inconsistente — parte vem de eventos, parte de update direto | Escolha um: Event Sourcing puro OU CRUD. Não misture no mesmo aggregate |
+| 6 | **Kafka topic com 1 partição** | Zero paralelismo — um consumer processa tudo sequencialmente | Particione por chave (ex: `OrderId`). Consumers = partições para throughput máximo |
+
+---
+
+## 🔧 Troubleshooting — Fase 13
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| gRPC "Unavailable: failed to connect" | Serviço não suporta HTTP/2 ou porta errada | Verifique `Kestrel` config: `Protocols = Http2` |
+| Proto gerou classes em namespace errado | `option csharp_namespace` não definido | Adicione `option csharp_namespace = "OrderFlow.Catalog.Grpc";` |
+| Kafka consumer lag crescendo | Processamento mais lento que produção | Adicione mais consumers (max = num partições) ou otimize processamento |
+| Event Store replay retorna eventos fora de ordem | Sem ordering no read | Use `StreamPosition` e leia em order ascendente |
+| "Schema incompatible" no Kafka | Novo schema quebra backward compatibility | Use Schema Registry com compatibility mode `BACKWARD` |
 
 ---
 

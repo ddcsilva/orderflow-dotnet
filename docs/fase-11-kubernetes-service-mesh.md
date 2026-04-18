@@ -45,6 +45,11 @@
 
 ---
 
+> 🤔 **Pense antes de ler:**
+> 1. Qual a diferença entre um **container** e um **Pod**? Por que o Kubernetes não gerencia containers diretamente?
+> 2. Se um Pod morre, quem garante que outro suba no lugar? E se o **node inteiro** cai?
+> 3. `ClusterIP` vs `NodePort` vs `LoadBalancer` — quando usar cada Service type?
+
 ## 2. Conceitos Fundamentais
 
 | Recurso | O Que É |
@@ -400,6 +405,31 @@ Workers Rabbit não estressam CPU — só fila cresce.
 ### ❌ Sem `topologySpreadConstraints`
 3 réplicas no mesmo node = node cai = serviço cai.
 ✅ `topologySpreadConstraints` ou `podAntiAffinity` espalha entre nodes/zones.
+
+---
+
+## ⚠️ Erros Comuns em Kubernetes
+
+| # | Erro | Consequência | Solução |
+|---|---|---|---|
+| 1 | **Liveness probe verificando dependência externa** | Banco cai → liveness falha → K8s reinicia o pod → loop infinito | Liveness verifica apenas se o **processo** está saudável. Dependências vão no readiness probe |
+| 2 | **Sem resource limits** | Pod consome toda memória/CPU do node → outros pods afetados | Sempre defina `requests` e `limits`. `requests` = mínimo garantido, `limits` = máximo |
+| 3 | **Secrets em plain text no YAML** | `base64` NÃO é criptografia — qualquer `kubectl get secret -o yaml` decodifica | Use Sealed Secrets, External Secrets Operator, ou Azure Key Vault CSI |
+| 4 | **Replicas no mesmo node** | Node cai → todas as réplicas caem → downtime | Use `topologySpreadConstraints` ou `podAntiAffinity` |
+| 5 | **Rolling update sem readiness probe** | K8s considera novo pod "ready" imediatamente → tráfego vai para pod que ainda está inicializando | Configure readiness probe com `initialDelaySeconds` adequado |
+| 6 | **`latest` tag em imagem** | Impossível saber qual versão está rodando. Rollback não funciona | Use tags semânticas: `orderflow/orders-api:v1.2.3` ou SHA do commit |
+
+---
+
+## 🔧 Troubleshooting — Fase 11
+
+| Sintoma | Causa Provável | Solução |
+|---------|---------------|---------|
+| Pod em CrashLoopBackOff | App crasha na inicialização (config faltando, connection refused) | `kubectl logs <pod>` + `kubectl describe pod <pod>` → cheque Events |
+| Pod Running mas 0/1 Ready | Readiness probe falhando | Verifique endpoint do probe. `kubectl exec -it <pod> -- curl localhost:8080/health` |
+| Service não roteia tráfego | Labels do pod não batem com selector do Service | Compare: `kubectl get pods --show-labels` vs `kubectl get svc -o yaml` |
+| "Insufficient memory" no scheduling | Resource requests > capacidade do node | Reduza requests ou adicione nodes ao cluster |
+| HPA não escala | Metrics server não instalado ou `resources.requests` não definido | `kubectl top pods` deve funcionar. Se não, instale metrics-server |
 
 ---
 
