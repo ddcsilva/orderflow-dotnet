@@ -966,6 +966,10 @@ csharp_style_namespace_declarations = file_scoped:suggestion
 csharp_style_var_for_built_in_types = false:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 
+<span class="cm"># Preferências de expression body</span>
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+
 <span class="cm"># Naming conventions</span>
 dotnet_naming_rule.private_fields_must_be_camel_case.severity = warning
 dotnet_naming_rule.private_fields_must_be_camel_case.symbols = private_fields
@@ -983,15 +987,19 @@ dotnet_naming_style.camel_case_with_underscore.capitalization = camel_case</code
         <tr><td><code>indent_style = space</code></td><td>Usa espaços em vez de tabs para indentação</td></tr>
         <tr><td><code>indent_size = 4</code></td><td>4 espaços por nível de indentação (padrão C#)</td></tr>
         <tr><td><code>end_of_line = crlf</code></td><td>Usa <code>\r\n</code> (Windows). Em projetos cross-platform, considere <code>lf</code></td></tr>
-        <tr><td><code>charset = utf-8-bom</code></td><td>UTF-8 com BOM — padrão do Visual Studio para arquivos C#</td></tr>
+        <tr><td><code>charset = utf-8</code></td><td>UTF-8 — encoding universal que suporta acentos, emojis e caracteres especiais</td></tr>
         <tr><td><code>trim_trailing_whitespace = true</code></td><td>Remove espaços no final das linhas automaticamente ao salvar</td></tr>
         <tr><td><code>insert_final_newline = true</code></td><td>Garante uma linha vazia no final do arquivo (boa prática para diffs no Git)</td></tr>
     </table>
     <p><strong>Configurações C# <code>[*.cs]</code>:</strong></p>
     <table class="table--small">
+        <tr><td><code>dotnet_sort_system_directives_first</code></td><td>Coloca <code>using System.*</code> antes de outros namespaces nos imports</td></tr>
+        <tr><td><code>dotnet_separate_import_directive_groups = false</code></td><td>Não adiciona linha em branco entre grupos de <code>using</code></td></tr>
         <tr><td><code>csharp_style_namespace_declarations = file_scoped:suggestion</code></td><td>Prefere <code>namespace X;</code> em vez de <code>namespace X { }</code> — economiza um nível de indentação</td></tr>
         <tr><td><code>csharp_style_var_for_built_in_types = false:suggestion</code></td><td>Prefere tipo explícito para tipos primitivos: <code>int x = 5</code> em vez de <code>var x = 5</code></td></tr>
         <tr><td><code>csharp_style_var_when_type_is_apparent = true:suggestion</code></td><td>Permite <code>var</code> quando o tipo é óbvio: <code>var list = new List&lt;string&gt;()</code></td></tr>
+        <tr><td><code>csharp_style_expression_bodied_methods = when_on_single_line:suggestion</code></td><td>Métodos de uma linha podem usar <code>=&gt;</code>: <code>public int Sum() =&gt; a + b;</code></td></tr>
+        <tr><td><code>csharp_style_expression_bodied_properties = true:suggestion</code></td><td>Propriedades calculadas usam <code>=&gt;</code>: <code>public string Full =&gt; $"{First} {Last}";</code></td></tr>
     </table>
     <p><strong>Naming conventions (convenções de nomenclatura):</strong></p>
     <p>As regras <code>dotnet_naming_*</code> forçam que campos privados usem o prefixo <code>_</code> com camelCase: <code>private readonly ILogger _logger;</code>. Isso é o padrão do .NET e ajuda a distinguir campos de variáveis locais e parâmetros sem usar <code>this.</code></p>
@@ -1534,6 +1542,33 @@ docker compose ps              # Status dos containers</code></pre>
     <p><strong>Separação de concerns:</strong> <code>ProductDto</code> = output (com <code>Id</code>, <code>CategoryName</code> computado). <code>CreateProductRequest</code> = input (sem <code>Id</code> — servidor gera). <code>UpdateProductRequest</code> = input parcial (sem <code>Sku</code> — imutável após criação). <code>PagedResult&lt;T&gt;</code> = record genérico com computed properties.</p>
 </div>
 
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/DTOs/CategoryDto.cs</div>
+<pre><code><span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Application.DTOs</span>;
+
+<span class="kw">public sealed record</span> <span class="tp">CategoryDto</span>(
+    <span class="tp">Guid</span> Id,
+    <span class="kw">string</span> Name,
+    <span class="kw">string</span>? Description,
+    <span class="kw">bool</span> IsActive,
+    <span class="kw">int</span> ProductCount,
+    <span class="tp">DateTime</span> CreatedAt,
+    <span class="tp">DateTime</span>? UpdatedAt);
+
+<span class="kw">public sealed record</span> <span class="tp">CreateCategoryRequest</span>(
+    <span class="kw">string</span> Name,
+    <span class="kw">string</span>? Description);
+
+<span class="kw">public sealed record</span> <span class="tp">UpdateCategoryRequest</span>(
+    <span class="kw">string</span> Name,
+    <span class="kw">string</span>? Description);</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Nota de Engenharia — Generic record com computed properties</div>
+    <p><code>PagedResult&lt;T&gt;</code> é um <strong>record genérico</strong> — funciona com <code>ProductDto</code>, <code>CategoryDto</code>, ou qualquer tipo. O <code>T</code> é resolvido em compile-time, sem boxing ou reflection.</p>
+    <p><code>public int TotalPages =&gt; (int)Math.Ceiling((double)TotalCount / PageSize);</code> — <strong>Computed property (expression-bodied)</strong> — recalculada a cada acesso. O cast <code>(double)</code> é necessário porque divisão inteira trunca: <code>7 / 3 = 2</code>, mas <code>7.0 / 3 = 2.33</code>, e <code>Ceiling(2.33) = 3</code>. Sem o cast, uma página ficaria faltando.</p>
+    <p><strong>Por que <code>IReadOnlyList&lt;T&gt;</code> e não <code>IEnumerable&lt;T&gt;</code>?</strong> <code>IReadOnlyList</code> garante acesso por índice (<code>Items[0]</code>) e <code>Count</code> sem materializar. <code>IEnumerable</code> permitiria lazy evaluation — perigoso em DTOs serializados para JSON, pois a query ao banco poderia já ter sido fechada (connection disposed).</p>
+</div>
+
 <div class="callout callout--tip">
     <div class="callout-title">💡 Em palavras simples — O que o PagedResult faz e para que serve?</div>
     <p>Imagine que sua loja tem 10.000 produtos. Quando o usuário abre a página de produtos, você <strong>não quer</strong> devolver todos de uma vez — seria lento, gastaria memória e a tela ficaria impossível de navegar. A solução é <strong>paginação</strong>: devolver os produtos em "páginas", tipo 20 por vez.</p>
@@ -1585,14 +1620,85 @@ docker compose ps              # Status dos containers</code></pre>
     <div class="callout-title">🔬 Validação em Duas Camadas</div>
     <p><strong>Nível 1 — FluentValidation (Application):</strong> Valida formato, limites, campos obrigatórios (regras "sintáticas"). Retorna <strong>todos</strong> os erros de uma vez.</p>
     <p><strong>Nível 2 — Guard clauses (Entity):</strong> Valida invariantes de negócio (regras "semânticas"). Protege mesmo se a criação vier de um message broker.</p>
-    <p>A regex <code>^[A-Za-z0-9\-]+$</code> impede caracteres especiais que quebrariam URLs.</p>
+    <p>A regex <code>^[A-Za-z0-9\-]+$</code> impede caracteres especiais que quebrariam URLs. <strong>Encadeamento fluente (builder pattern)</strong> — cada método retorna o builder, permitindo chamadas em cadeia.</p>
+</div>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/Validators/CreateCategoryValidator.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">FluentValidation</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Application.DTOs</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Application.Validators</span>;
+
+<span class="kw">public sealed class</span> <span class="tp">CreateCategoryValidator</span> : <span class="tp">AbstractValidator</span>&lt;<span class="tp">CreateCategoryRequest</span>&gt;
+{
+    <span class="kw">public</span> <span class="fn">CreateCategoryValidator</span>()
+    {
+        <span class="fn">RuleFor</span>(x =&gt; x.Name)
+            .<span class="fn">NotEmpty</span>().<span class="fn">WithMessage</span>(<span class="str">"O nome da categoria é obrigatório."</span>)
+            .<span class="fn">MaximumLength</span>(<span class="num">100</span>).<span class="fn">WithMessage</span>(<span class="str">"O nome da categoria não pode exceder 100 caracteres."</span>);
+
+        <span class="fn">RuleFor</span>(x =&gt; x.Description)
+            .<span class="fn">MaximumLength</span>(<span class="num">500</span>).<span class="fn">WithMessage</span>(<span class="str">"A descrição não pode exceder 500 caracteres."</span>)
+            .<span class="fn">When</span>(x =&gt; x.Description <span class="kw">is not null</span>);
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Engenharia — Validação condicional</div>
+    <p><code>.When(x =&gt; x.Description is not null)</code> — O <code>.When()</code> aplica a regra <strong>somente</strong> se a condição for verdadeira. Sem ele, <code>MaximumLength</code> falharia em <code>null</code>. O <code>is not null</code> é <strong>pattern matching</strong> do C# — equivale a <code>!= null</code> mas mais idiomático e null-safe.</p>
 </div>
 
 <!-- ====== 4.6 Services ====== -->
 <h3>4.6 Catalog Application — Services</h3>
 
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/Interfaces/IProductService.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Application.DTOs</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Application.Interfaces</span>;
+
+<span class="kw">public interface</span> <span class="tp">IProductService</span>
+{
+    <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>?&gt; <span class="fn">GetByIdAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>?&gt; <span class="fn">GetBySkuAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">PagedResult</span>&lt;<span class="tp">ProductDto</span>&gt;&gt; <span class="fn">SearchAsync</span>(<span class="tp">ProductSearchRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>&gt; <span class="fn">CreateAsync</span>(<span class="tp">CreateProductRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>&gt; <span class="fn">UpdateAsync</span>(<span class="tp">Guid</span> id, <span class="tp">UpdateProductRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span> <span class="fn">DeleteAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+}</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Service Interface: a fronteira da Application Layer</div>
+    <p><strong>Decisão:</strong> Controllers dependem de <code>IProductService</code>, nunca de <code>ProductService</code> diretamente.</p>
+    <p><strong>Por quê?</strong> Três razões: (1) <strong>Testabilidade</strong> — testes do controller usam mock de <code>IProductService</code>, sem banco real. (2) <strong>Inversão de dependência</strong> — a API Layer depende de uma abstração (interface), não da implementação. (3) <strong>Substituibilidade</strong> — pode trocar para <code>CachedProductService</code> (decorator) sem alterar controllers.</p>
+    <p><strong>Retornos <code>Task&lt;ProductDto?&gt;</code> vs <code>Task&lt;ProductDto&gt;</code>:</strong> Nullable (<code>?</code>) em Gets indica "pode não existir". Non-nullable em Create/Update indica "sempre retorna" — se falhar, lança exception.</p>
+</div>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/Interfaces/ICategoryService.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Application.DTOs</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Application.Interfaces</span>;
+
+<span class="kw">public interface</span> <span class="tp">ICategoryService</span>
+{
+    <span class="tp">Task</span>&lt;<span class="tp">CategoryDto</span>?&gt; <span class="fn">GetByIdAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">IReadOnlyList</span>&lt;<span class="tp">CategoryDto</span>&gt;&gt; <span class="fn">GetAllActiveAsync</span>(<span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">CategoryDto</span>&gt; <span class="fn">CreateAsync</span>(<span class="tp">CreateCategoryRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span>&lt;<span class="tp">CategoryDto</span>&gt; <span class="fn">UpdateAsync</span>(<span class="tp">Guid</span> id, <span class="tp">UpdateCategoryRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+    <span class="tp">Task</span> <span class="fn">DeleteAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>);
+}</code></pre>
+
 <div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Application/Services/ProductService.cs</div>
-<pre><code><span class="kw">public sealed partial class</span> <span class="tp">ProductService</span>(
+<pre><code><span class="kw">using</span> <span class="tp">FluentValidation</span>;
+<span class="kw">using</span> <span class="tp">Microsoft.Extensions.Logging</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Application.DTOs</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Application.Interfaces</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Domain.Entities</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Domain.Interfaces</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.SharedKernel</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Application.Services</span>;
+
+<span class="kw">public sealed partial class</span> <span class="tp">ProductService</span>(
     <span class="tp">IProductRepository</span> productRepository,
     <span class="tp">ICategoryRepository</span> categoryRepository,
     <span class="tp">IUnitOfWork</span> unitOfWork,
@@ -1600,6 +1706,31 @@ docker compose ps              # Status dos containers</code></pre>
     <span class="tp">IValidator</span>&lt;<span class="tp">UpdateProductRequest</span>&gt; updateValidator,
     <span class="tp">ILogger</span>&lt;<span class="tp">ProductService</span>&gt; logger) : <span class="tp">IProductService</span>
 {
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>?&gt; <span class="fn">GetByIdAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">var</span> product = <span class="kw">await</span> productRepository.<span class="fn">GetByIdAsync</span>(id, ct);
+        <span class="kw">return</span> product <span class="kw">is null</span> ? <span class="kw">null</span> : <span class="fn">MapToDto</span>(product);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>?&gt; <span class="fn">GetBySkuAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">var</span> product = <span class="kw">await</span> productRepository.<span class="fn">GetBySkuAsync</span>(sku, ct);
+        <span class="kw">return</span> product <span class="kw">is null</span> ? <span class="kw">null</span> : <span class="fn">MapToDto</span>(product);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">PagedResult</span>&lt;<span class="tp">ProductDto</span>&gt;&gt; <span class="fn">SearchAsync</span>(
+        <span class="tp">ProductSearchRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">var</span> (items, totalCount) = <span class="kw">await</span> productRepository.<span class="fn">SearchAsync</span>(
+            request.SearchTerm, request.CategoryId,
+            request.MinPrice, request.MaxPrice,
+            request.Page, request.PageSize, ct);
+
+        <span class="kw">return new</span> <span class="tp">PagedResult</span>&lt;<span class="tp">ProductDto</span>&gt;(
+            items.<span class="fn">Select</span>(<span class="fn">MapToDto</span>).<span class="fn">ToList</span>(),
+            totalCount, request.Page, request.PageSize);
+    }
+
     <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>&gt; <span class="fn">CreateAsync</span>(
         <span class="tp">CreateProductRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
     {
@@ -1631,6 +1762,26 @@ docker compose ps              # Status dos containers</code></pre>
         <span class="kw">return</span> <span class="fn">MapToDto</span>(product);
     }
 
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>&gt; <span class="fn">UpdateAsync</span>(
+        <span class="tp">Guid</span> id, <span class="tp">UpdateProductRequest</span> request, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">var</span> validation = <span class="kw">await</span> updateValidator.<span class="fn">ValidateAsync</span>(request, ct);
+        <span class="kw">if</span> (!validation.IsValid)
+            <span class="kw">throw new</span> <span class="tp">ValidationException</span>(validation.Errors);
+
+        <span class="kw">var</span> product = <span class="kw">await</span> productRepository.<span class="fn">GetByIdAsync</span>(id, ct)
+            ?? <span class="kw">throw new</span> <span class="tp">KeyNotFoundException</span>(<span class="str">$"Produto com ID '{id}' não foi encontrado."</span>);
+
+        product.<span class="fn">Update</span>(request.Name, request.Description, request.Price, request.StockQuantity);
+
+        productRepository.<span class="fn">Update</span>(product);
+        <span class="kw">await</span> unitOfWork.<span class="fn">SaveChangesAsync</span>(ct);
+
+        <span class="fn">LogProductUpdated</span>(logger, product.Id);
+
+        <span class="kw">return</span> <span class="fn">MapToDto</span>(product);
+    }
+
     <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">DeleteAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
     {
         <span class="kw">var</span> product = <span class="kw">await</span> productRepository.<span class="fn">GetByIdAsync</span>(id, ct)
@@ -1639,23 +1790,41 @@ docker compose ps              # Status dos containers</code></pre>
         product.<span class="fn">Deactivate</span>();           <span class="cm">// Soft delete!</span>
         productRepository.<span class="fn">Update</span>(product);
         <span class="kw">await</span> unitOfWork.<span class="fn">SaveChangesAsync</span>(ct);
+
+        <span class="fn">LogProductDeactivated</span>(logger, product.Id);
     }
+
+    <span class="kw">private static</span> <span class="tp">ProductDto</span> <span class="fn">MapToDto</span>(<span class="tp">Product</span> product) =&gt; <span class="kw">new</span>(
+        product.Id, product.Name, product.Description,
+        product.Sku, product.Price, product.StockQuantity,
+        product.IsActive, product.CategoryId, product.Category?.Name,
+        product.CreatedAt, product.UpdatedAt);
 
     [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Information, Message = <span class="str">"Produto criado: {ProductId} - {ProductName}"</span>)]
     <span class="kw">private static partial void</span> <span class="fn">LogProductCreated</span>(<span class="tp">ILogger</span> logger, <span class="tp">Guid</span> productId, <span class="kw">string</span> productName);
-    <span class="cm">// ... GetByIdAsync, GetBySkuAsync, SearchAsync, UpdateAsync ...</span>
+
+    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Information, Message = <span class="str">"Produto atualizado: {ProductId}"</span>)]
+    <span class="kw">private static partial void</span> <span class="fn">LogProductUpdated</span>(<span class="tp">ILogger</span> logger, <span class="tp">Guid</span> productId);
+
+    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Information, Message = <span class="str">"Produto desativado: {ProductId}"</span>)]
+    <span class="kw">private static partial void</span> <span class="fn">LogProductDeactivated</span>(<span class="tp">ILogger</span> logger, <span class="tp">Guid</span> productId);
 }</code></pre>
 
 <div class="callout callout--arch">
     <div class="callout-title">🏛️ Application Service — O Orquestrador</div>
-    <p><strong>ProductService não contém lógica de negócio</strong> — ele <strong>orquestra</strong>: valida input → busca entidades → chama métodos do domínio → persiste → retorna DTO.</p>
-    <p><strong>Primary constructor (C# 12) + <code>partial</code></strong> — parâmetros viram campos implícitos. O <code>partial</code> é necessário para os métodos <code>[LoggerMessage]</code> source-generated. <strong>Validate-first</strong> — falha rápido antes de qualquer I/O. <strong>Null-coalescing throw</strong> (<code>??</code>) verifica nulidade em uma linha.</p>
+    <p><strong>ProductService não contém lógica de negócio</strong> — ele <strong>orquestra</strong>: valida input → busca entidades → chama métodos do domínio → persiste → retorna DTO. Se a lógica de estoque estiver aqui em vez da entidade, é sinal de <strong>Anemic Domain Model</strong> (anti-pattern).</p>
+    <p><strong>Primary constructor (C# 12) + <code>partial</code></strong> — parâmetros viram campos implícitos. O <code>partial</code> é necessário para os métodos <code>[LoggerMessage]</code> source-generated.</p>
+    <p><strong>Validate-first</strong> — falha rápido antes de qualquer I/O. <strong>Null-coalescing throw</strong> (<code>??</code>) verifica nulidade em uma linha.</p>
     <p><strong>Soft delete</strong> — <code>DeleteAsync</code> chama <code>Deactivate()</code>, não <code>Remove()</code>. Combinado com <code>HasQueryFilter</code> do EF Core, o produto "desaparece" das queries mas permanece no banco.</p>
+    <p><strong>Decisão — Exceptions como controle de fluxo:</strong> O service lança <code>KeyNotFoundException</code>, <code>ValidationException</code>, <code>InvalidOperationException</code> capturadas pelo <code>GlobalExceptionHandler</code>. Alternativa: <strong>Result Pattern</strong> (<code>Result&lt;ProductDto&gt;</code>), que evita exceptions para fluxos esperados. O OrderFlow evolui para Result Pattern na Fase 05.</p>
 </div>
 
 <div class="callout callout--eng">
-    <div class="callout-title">🔬 LoggerMessage Source Generation</div>
-    <p><code>LogProductCreated(logger, product.Id, product.Name)</code> — gerado em compile-time pelo atributo <code>[LoggerMessage]</code>. Evita boxing de parâmetros e alocações em runtime. Com <code>TreatWarningsAsErrors=true</code>, os warnings CA1848/CA1873 bloqueiam o build se usar <code>logger.LogInformation()</code> diretamente. Os templates como <code>{ProductId}</code> capturam valores como propriedades estruturadas no Serilog.</p>
+    <div class="callout-title">🔬 Dissecando o fluxo do CreateAsync</div>
+    <p><code>var validation = await createValidator.ValidateAsync(request, ct);</code> — <strong>Validate-first</strong> — falha rápido antes de qualquer I/O (banco). Se o request é inválido, nem busca a categoria.</p>
+    <p><code>var category = await categoryRepository.GetByIdAsync(request.CategoryId, ct) ?? throw new KeyNotFoundException(...);</code> — <strong>Null-coalescing throw</strong> — verifica nulidade e lança em uma linha. Verifica existência da categoria <strong>antes</strong> de criar o produto.</p>
+    <p><code>await productRepository.AddAsync(product, ct); await unitOfWork.SaveChangesAsync(ct);</code> — <strong>Duas operações, uma transação</strong> — <code>AddAsync</code> marca no change tracker, <code>SaveChangesAsync</code> persiste. Se falhar, nada é salvo (atomicidade do Unit of Work).</p>
+    <p><code>LogProductCreated(logger, product.Id, product.Name);</code> — <strong>Structured logging via source generation</strong> — gerado em compile-time pelo atributo <code>[LoggerMessage]</code>. O template captura valores como propriedades estruturadas no Serilog, permitindo filtrar no Seq: <code>ProductId = "abc-123"</code>. Evita boxing e alocações — satisfaz warnings CA1848/CA1873 quando <code>TreatWarningsAsErrors=true</code>.</p>
 </div>
 
 <!-- ====== 4.7 Infrastructure ====== -->
@@ -1723,15 +1892,57 @@ docker compose ps              # Status dos containers</code></pre>
     <div class="callout-title">🏛️ Fluent API vs Data Annotations</div>
     <p>Toda configuração de banco está na Fluent API (Infrastructure), <strong>nunca em atributos na entidade</strong> (Domain). Atributos como <code>[MaxLength(200)]</code> no domínio criariam dependência da infraestrutura — violando a Regra de Dependência da Clean Architecture.</p>
     <p><strong>decimal(18, 2)</strong> — para dinheiro, <strong>nunca use float ou double</strong>. <code>0.1 + 0.2 != 0.3</code> em floating point. <strong>Restrict</strong> impede deletar categoria com produtos — o mais seguro.</p>
+    <p><strong>Unique index no SKU</strong> — o banco garante unicidade. Mesmo que o application service verifique <code>SkuExistsAsync</code> antes, race conditions podem permitir duplicatas. O unique index é a <strong>última linha de defesa</strong>.</p>
+    <p><strong>Composite index <code>(CategoryId, Name)</code></strong> — otimiza queries que filtram por categoria e nome. A ordem importa: <code>CategoryId</code> primeiro (mais seletivo).</p>
+</div>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Infrastructure/Data/Configurations/CategoryConfiguration.cs</div>
+<pre><code><span class="kw">using</span> <span class="tp">Microsoft.EntityFrameworkCore</span>;
+<span class="kw">using</span> <span class="tp">Microsoft.EntityFrameworkCore.Metadata.Builders</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Domain.Entities</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Infrastructure.Data.Configurations</span>;
+
+<span class="kw">public sealed class</span> <span class="tp">CategoryConfiguration</span> : <span class="tp">IEntityTypeConfiguration</span>&lt;<span class="tp">Category</span>&gt;
+{
+    <span class="kw">public void</span> <span class="fn">Configure</span>(<span class="tp">EntityTypeBuilder</span>&lt;<span class="tp">Category</span>&gt; builder)
+    {
+        builder.<span class="fn">ToTable</span>(<span class="str">"Categories"</span>);
+
+        builder.<span class="fn">HasKey</span>(c =&gt; c.Id);
+
+        builder.<span class="fn">Property</span>(c =&gt; c.Name)
+            .<span class="fn">HasMaxLength</span>(<span class="num">100</span>)
+            .<span class="fn">IsRequired</span>();
+
+        builder.<span class="fn">Property</span>(c =&gt; c.Description)
+            .<span class="fn">HasMaxLength</span>(<span class="num">500</span>);
+
+        builder.<span class="fn">HasIndex</span>(c =&gt; c.Name)
+            .<span class="fn">IsUnique</span>();
+
+        builder.<span class="fn">Ignore</span>(c =&gt; c.DomainEvents);
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Unique index no nome da categoria</div>
+    <p><code>builder.HasIndex(c =&gt; c.Name).IsUnique();</code> — Garante que não existam duas categorias com o mesmo nome. Compare com o Product, que tem unique no <strong>SKU</strong> mas não no <strong>Name</strong> (dois produtos podem ter o mesmo nome, desde que SKUs diferentes). Essas decisões refletem <strong>regras de negócio</strong>: categorias são identificadas pelo nome, produtos pelo SKU.</p>
 </div>
 
 <!-- ====== 4.8 Repositories ====== -->
 <h3>4.8 Catalog Infrastructure — Repositories</h3>
 
 <div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Infrastructure/Data/Repositories/ProductRepository.cs</div>
-<pre><code><span class="kw">public sealed class</span> <span class="tp">ProductRepository</span>(<span class="tp">CatalogDbContext</span> context) : <span class="tp">IProductRepository</span>
+<pre><code><span class="kw">using</span> <span class="tp">Microsoft.EntityFrameworkCore</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Domain.Entities</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Domain.Interfaces</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Infrastructure.Data.Repositories</span>;
+
+<span class="kw">public sealed class</span> <span class="tp">ProductRepository</span>(<span class="tp">CatalogDbContext</span> context) : <span class="tp">IProductRepository</span>
 {
-    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">Product</span>?&gt; <span class="fn">GetByIdAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">Product</span>?&gt; <span class="fn">GetByIdAsync</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
     {
         <span class="kw">return await</span> context.Products
             .<span class="fn">Include</span>(p =&gt; p.Category)     <span class="cm">// JOIN no SQL</span>
@@ -1739,10 +1950,52 @@ docker compose ps              # Status dos containers</code></pre>
     }
     <span class="cm">// GetByIdAsync SEM AsNoTracking — intencional para write queries!</span>
 
-    <span class="kw">public async</span> <span class="tp">Task</span>&lt;(<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Product</span>&gt;, <span class="kw">int</span>)&gt; <span class="fn">SearchAsync</span>(
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Product</span>&gt;&gt; <span class="fn">GetAllAsync</span>(<span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">return await</span> context.Products
+            .<span class="fn">Include</span>(p =&gt; p.Category)
+            .<span class="fn">AsNoTracking</span>()
+            .<span class="fn">OrderBy</span>(p =&gt; p.Name)
+            .<span class="fn">ToListAsync</span>(ct);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">AddAsync</span>(<span class="tp">Product</span> entity, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">await</span> context.Products.<span class="fn">AddAsync</span>(entity, ct);
+    }
+
+    <span class="kw">public void</span> <span class="fn">Update</span>(<span class="tp">Product</span> entity)
+    {
+        context.Products.<span class="fn">Update</span>(entity);
+    }
+
+    <span class="kw">public void</span> <span class="fn">Remove</span>(<span class="tp">Product</span> entity)
+    {
+        context.Products.<span class="fn">Remove</span>(entity);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">Product</span>?&gt; <span class="fn">GetBySkuAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">return await</span> context.Products
+            .<span class="fn">Include</span>(p =&gt; p.Category)
+            .<span class="fn">FirstOrDefaultAsync</span>(p =&gt; p.Sku == sku, ct);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Product</span>&gt;&gt; <span class="fn">GetByCategoryAsync</span>(
+        <span class="tp">Guid</span> categoryId, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
+    {
+        <span class="kw">return await</span> context.Products
+            .<span class="fn">Include</span>(p =&gt; p.Category)
+            .<span class="fn">AsNoTracking</span>()
+            .<span class="fn">Where</span>(p =&gt; p.CategoryId == categoryId)
+            .<span class="fn">OrderBy</span>(p =&gt; p.Name)
+            .<span class="fn">ToListAsync</span>(ct);
+    }
+
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;(<span class="tp">IReadOnlyList</span>&lt;<span class="tp">Product</span>&gt; Items, <span class="kw">int</span> TotalCount)&gt; <span class="fn">SearchAsync</span>(
         <span class="kw">string</span>? searchTerm, <span class="tp">Guid</span>? categoryId,
         <span class="kw">decimal</span>? minPrice, <span class="kw">decimal</span>? maxPrice,
-        <span class="kw">int</span> page, <span class="kw">int</span> pageSize, <span class="tp">CancellationToken</span> ct)
+        <span class="kw">int</span> page, <span class="kw">int</span> pageSize, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
     {
         <span class="kw">var</span> query = context.Products
             .<span class="fn">Include</span>(p =&gt; p.Category)
@@ -1771,7 +2024,7 @@ docker compose ps              # Status dos containers</code></pre>
         <span class="kw">return</span> (items, totalCount);
     }
 
-    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="kw">bool</span>&gt; <span class="fn">SkuExistsAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct)
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="kw">bool</span>&gt; <span class="fn">SkuExistsAsync</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct = <span class="kw">default</span>)
     {
         <span class="kw">var</span> normalizedSku = sku.<span class="fn">Trim</span>().<span class="fn">ToUpperInvariant</span>();
         <span class="kw">return await</span> context.Products
@@ -1779,6 +2032,20 @@ docker compose ps              # Status dos containers</code></pre>
             .<span class="fn">AnyAsync</span>(p =&gt; p.Sku == normalizedSku, ct);
     }
 }</code></pre>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Repository como Adaptador</div>
+    <p>Na Clean Architecture, o repository é um <strong>Adapter</strong> (padrão Ports &amp; Adapters): a interface (port) está no Domain, a implementação (adapter) está na Infrastructure. Se amanhã trocar EF Core por Dapper para queries de leitura, <strong>apenas esta classe muda</strong> — domínio e application ficam intactos.</p>
+</div>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 EF Core query patterns linha a linha</div>
+    <p><strong><code>Include</code> = JOIN no SQL.</strong> Sem ele, <code>product.Category</code> seria <code>null</code> (lazy loading está desabilitado por padrão no EF Core). <code>FirstOrDefaultAsync</code> retorna o primeiro match ou <code>null</code> — traduzido para <code>SELECT TOP 1 ... WHERE Id = @id</code>.</p>
+    <p><strong><code>GetByIdAsync</code> sem <code>AsNoTracking</code></strong> — intencional! Queries de escrita (Get → Update → Save) precisam do change tracker. Queries de leitura (<code>GetAllAsync</code>, <code>SearchAsync</code>) usam <code>AsNoTracking</code> porque não vão modificar os objetos — economiza memória e CPU.</p>
+    <p><strong>Query composicional</strong> — o <code>IQueryable</code> é como um SQL builder. Cada <code>.Where()</code> adiciona condição mas <strong>não executa</strong>. A query vai ao banco apenas no <code>ToListAsync()</code> ou <code>CountAsync()</code>. Isso é <strong>deferred execution</strong>.</p>
+    <p><strong><code>IgnoreQueryFilters()</code></strong> no <code>SkuExistsAsync</code> é proposital — precisa checar inclusive produtos inativos. A normalização (<code>Trim().ToUpperInvariant()</code>) garante consistência com o <code>Product.Create</code> que armazena o SKU normalizado.</p>
+    <p><strong>Paginação offset-based</strong> — simples mas com trade-off: páginas altas são lentas. Para datasets enormes, <strong>keyset pagination</strong> (<code>WHERE Id &gt; @lastId</code>) é mais eficiente.</p>
+</div>
 
 <!-- ====== 4.9 DI Registration ====== -->
 <h3>4.9 Catalog Infrastructure — DI Registration</h3>
@@ -1829,6 +2096,13 @@ docker compose ps              # Status dos containers</code></pre>
         </tbody>
     </table>
     <p><code>AddScoped&lt;IUnitOfWork&gt;(sp =&gt; sp.GetRequiredService&lt;CatalogDbContext&gt;())</code> — <strong>factory registration</strong>: <code>IUnitOfWork</code> e <code>CatalogDbContext</code> são a <strong>mesma instância</strong> no request.</p>
+    <p><strong>Resiliência built-in</strong> — <code>EnableRetryOnFailure(maxRetryCount: 3)</code>: se o SQL Server estiver temporariamente indisponível, o EF Core tenta novamente com backoff.</p>
+    <p><strong>Assembly scanning</strong> — <code>AddValidatorsFromAssemblyContaining</code> encontra automaticamente todos os validators. Segue o Open/Closed Principle.</p>
+</div>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Composition Root — Onde tudo se conecta</div>
+    <p>Este arquivo é o <strong>Composition Root</strong> do microserviço — o único lugar que conhece <strong>todas as camadas</strong>. Ele registra quem implementa o quê. O <code>HostingExtensions.AddApiServices()</code> chama <code>AddCatalogInfrastructure()</code> e pronto — não precisa saber de <code>ProductRepository</code> ou <code>CatalogDbContext</code>.</p>
 </div>
 
 <!-- ====== 4.10 Controllers ====== -->
@@ -1840,7 +2114,9 @@ docker compose ps              # Status dos containers</code></pre>
 [<span class="at">Produces</span>(<span class="str">"application/json"</span>)]
 <span class="kw">public sealed class</span> <span class="tp">ProductsController</span>(<span class="tp">IProductService</span> productService) : <span class="tp">ControllerBase</span>
 {
+    <span class="cm">/// &lt;summary&gt;Search products with filtering and pagination.&lt;/summary&gt;</span>
     [<span class="at">HttpGet</span>]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">PagedResult</span>&lt;<span class="tp">ProductDto</span>&gt;), <span class="tp">StatusCodes</span>.Status200OK)]
     <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Search</span>(
         [<span class="at">FromQuery</span>] <span class="tp">ProductSearchRequest</span> request, <span class="tp">CancellationToken</span> ct)
     {
@@ -1848,14 +2124,30 @@ docker compose ps              # Status dos containers</code></pre>
         <span class="kw">return</span> <span class="fn">Ok</span>(result);
     }
 
+    <span class="cm">/// &lt;summary&gt;Get a product by ID.&lt;/summary&gt;</span>
     [<span class="at">HttpGet</span>(<span class="str">"{id:guid}"</span>)]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">ProductDto</span>), <span class="tp">StatusCodes</span>.Status200OK)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status404NotFound)]
     <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">GetById</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
     {
         <span class="kw">var</span> product = <span class="kw">await</span> productService.<span class="fn">GetByIdAsync</span>(id, ct);
         <span class="kw">return</span> product <span class="kw">is not null</span> ? <span class="fn">Ok</span>(product) : <span class="fn">NotFound</span>();
     }
 
+    <span class="cm">/// &lt;summary&gt;Get a product by SKU.&lt;/summary&gt;</span>
+    [<span class="at">HttpGet</span>(<span class="str">"sku/{sku}"</span>)]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">ProductDto</span>), <span class="tp">StatusCodes</span>.Status200OK)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status404NotFound)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">GetBySku</span>(<span class="kw">string</span> sku, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> product = <span class="kw">await</span> productService.<span class="fn">GetBySkuAsync</span>(sku, ct);
+        <span class="kw">return</span> product <span class="kw">is not null</span> ? <span class="fn">Ok</span>(product) : <span class="fn">NotFound</span>();
+    }
+
+    <span class="cm">/// &lt;summary&gt;Create a new product.&lt;/summary&gt;</span>
     [<span class="at">HttpPost</span>]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">ProductDto</span>), <span class="tp">StatusCodes</span>.Status201Created)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status400BadRequest)]
     <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Create</span>(
         [<span class="at">FromBody</span>] <span class="tp">CreateProductRequest</span> request, <span class="tp">CancellationToken</span> ct)
     {
@@ -1864,12 +2156,22 @@ docker compose ps              # Status dos containers</code></pre>
             <span class="kw">new</span> { id = product.Id }, product);
     }
 
+    <span class="cm">/// &lt;summary&gt;Update an existing product.&lt;/summary&gt;</span>
     [<span class="at">HttpPut</span>(<span class="str">"{id:guid}"</span>)]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">ProductDto</span>), <span class="tp">StatusCodes</span>.Status200OK)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status404NotFound)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status400BadRequest)]
     <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Update</span>(
         <span class="tp">Guid</span> id, [<span class="at">FromBody</span>] <span class="tp">UpdateProductRequest</span> request, <span class="tp">CancellationToken</span> ct)
-        =&gt; <span class="fn">Ok</span>(<span class="kw">await</span> productService.<span class="fn">UpdateAsync</span>(id, request, ct));
+    {
+        <span class="kw">var</span> product = <span class="kw">await</span> productService.<span class="fn">UpdateAsync</span>(id, request, ct);
+        <span class="kw">return</span> <span class="fn">Ok</span>(product);
+    }
 
+    <span class="cm">/// &lt;summary&gt;Soft-delete (deactivate) a product.&lt;/summary&gt;</span>
     [<span class="at">HttpDelete</span>(<span class="str">"{id:guid}"</span>)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status204NoContent)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status404NotFound)]
     <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Delete</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
     {
         <span class="kw">await</span> productService.<span class="fn">DeleteAsync</span>(id, ct);
@@ -1881,6 +2183,65 @@ docker compose ps              # Status dos containers</code></pre>
     <div class="callout-title">🏛️ Controller Magro, Service Gordo</div>
     <p>Controller não tem lógica — apenas roteia HTTP para Service. <code>[Route("api/v1/[controller]")]</code> — versionamento na URL. <code>{id:guid}</code> — route constraint rejeita IDs inválidos antes do código.</p>
     <p><code>CreatedAtAction</code> retorna HTTP 201 com header <code>Location</code> — padrão REST. <code>CancellationToken</code> é injetado automaticamente pelo ASP.NET Core quando o client desconecta.</p>
+    <p><code>[ProducesResponseType]</code> — metadata para Swagger que gera a documentação OpenAPI automaticamente, mostrando quais status codes e tipos de resposta cada endpoint retorna.</p>
+</div>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/Controllers/CategoriesController.cs</div>
+<pre><code>[<span class="at">ApiController</span>]
+[<span class="at">Route</span>(<span class="str">"api/v1/[controller]"</span>)]
+[<span class="at">Produces</span>(<span class="str">"application/json"</span>)]
+<span class="kw">public sealed class</span> <span class="tp">CategoriesController</span>(<span class="tp">ICategoryService</span> categoryService) : <span class="tp">ControllerBase</span>
+{
+    [<span class="at">HttpGet</span>]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">IReadOnlyList</span>&lt;<span class="tp">CategoryDto</span>&gt;), <span class="tp">StatusCodes</span>.Status200OK)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">GetAll</span>(<span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> categories = <span class="kw">await</span> categoryService.<span class="fn">GetAllActiveAsync</span>(ct);
+        <span class="kw">return</span> <span class="fn">Ok</span>(categories);
+    }
+
+    [<span class="at">HttpGet</span>(<span class="str">"{id:guid}"</span>)]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">CategoryDto</span>), <span class="tp">StatusCodes</span>.Status200OK)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status404NotFound)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">GetById</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> categoryService.<span class="fn">GetByIdAsync</span>(id, ct);
+        <span class="kw">return</span> category <span class="kw">is not null</span> ? <span class="fn">Ok</span>(category) : <span class="fn">NotFound</span>();
+    }
+
+    [<span class="at">HttpPost</span>]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">CategoryDto</span>), <span class="tp">StatusCodes</span>.Status201Created)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status400BadRequest)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Create</span>(
+        [<span class="at">FromBody</span>] <span class="tp">CreateCategoryRequest</span> request, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> categoryService.<span class="fn">CreateAsync</span>(request, ct);
+        <span class="kw">return</span> <span class="fn">CreatedAtAction</span>(<span class="kw">nameof</span>(<span class="fn">GetById</span>), <span class="kw">new</span> { id = category.Id }, category);
+    }
+
+    [<span class="at">HttpPut</span>(<span class="str">"{id:guid}"</span>)]
+    [<span class="at">ProducesResponseType</span>(<span class="kw">typeof</span>(<span class="tp">CategoryDto</span>), <span class="tp">StatusCodes</span>.Status200OK)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status404NotFound)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Update</span>(
+        <span class="tp">Guid</span> id, [<span class="at">FromBody</span>] <span class="tp">UpdateCategoryRequest</span> request, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> categoryService.<span class="fn">UpdateAsync</span>(id, request, ct);
+        <span class="kw">return</span> <span class="fn">Ok</span>(category);
+    }
+
+    [<span class="at">HttpDelete</span>(<span class="str">"{id:guid}"</span>)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status204NoContent)]
+    [<span class="at">ProducesResponseType</span>(<span class="tp">StatusCodes</span>.Status404NotFound)]
+    <span class="kw">public async</span> <span class="tp">Task</span>&lt;<span class="tp">IActionResult</span>&gt; <span class="fn">Delete</span>(<span class="tp">Guid</span> id, <span class="tp">CancellationToken</span> ct)
+    {
+        <span class="kw">await</span> categoryService.<span class="fn">DeleteAsync</span>(id, ct);
+        <span class="kw">return</span> <span class="fn">NoContent</span>();
+    }
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Controllers "espelhos"</div>
+    <p>Note como <code>CategoriesController</code> segue a <strong>mesma estrutura</strong> do <code>ProductsController</code> — mesmos verbos HTTP, mesmos patterns de retorno. Isso é consistência de API: o consumidor que aprendeu a usar Products já sabe usar Categories. APIs previsíveis reduzem a curva de aprendizado.</p>
 </div>
 
 <!-- ====== 4.11 Exception Handling ====== -->
@@ -1890,59 +2251,94 @@ docker compose ps              # Status dos containers</code></pre>
 <pre><code><span class="kw">public sealed partial class</span> <span class="tp">GlobalExceptionHandler</span>(
     <span class="tp">ILogger</span>&lt;<span class="tp">GlobalExceptionHandler</span>&gt; logger) : <span class="tp">IMiddleware</span>
 {
-    <span class="kw">private static readonly</span> <span class="tp">JsonSerializerOptions</span> JsonOptions = <span class="kw">new</span>(<span class="tp">JsonSerializerDefaults</span>.Web);
+    <span class="kw">private static readonly</span> <span class="tp">JsonSerializerOptions</span> JsonOptions = <span class="kw">new</span>()
+    {
+        PropertyNamingPolicy = <span class="tp">JsonNamingPolicy</span>.CamelCase
+    };
 
     <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">InvokeAsync</span>(<span class="tp">HttpContext</span> context, <span class="tp">RequestDelegate</span> next)
     {
-        <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">next</span>(context); }
-        <span class="kw">catch</span> (<span class="tp">Exception</span> ex) { <span class="kw">await</span> <span class="fn">HandleExceptionAsync</span>(context, ex); }
+        <span class="kw">try</span>
+        {
+            <span class="kw">await</span> <span class="fn">next</span>(context);
+        }
+        <span class="kw">catch</span> (<span class="tp">Exception</span> ex)
+        {
+            <span class="kw">await</span> <span class="fn">HandleExceptionAsync</span>(context, ex);
+        }
     }
 
-    <span class="kw">private async</span> <span class="tp">Task</span> <span class="fn">HandleExceptionAsync</span>(<span class="tp">HttpContext</span> ctx, <span class="tp">Exception</span> ex)
+    <span class="kw">private async</span> <span class="tp">Task</span> <span class="fn">HandleExceptionAsync</span>(<span class="tp">HttpContext</span> context, <span class="tp">Exception</span> exception)
     {
-        <span class="kw">var</span> (statusCode, errorResponse) = ex <span class="kw">switch</span>
+        <span class="kw">var</span> (statusCode, errorResponse) = exception <span class="kw">switch</span>
         {
-            <span class="tp">ValidationException</span> v =&gt;
-                (<span class="tp">HttpStatusCode</span>.BadRequest,
-                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Erro de Validação"</span>,
-                     v.Errors.<span class="fn">Select</span>(e =&gt; e.ErrorMessage).<span class="fn">ToArray</span>())),
+            <span class="tp">ValidationException</span> validationEx =&gt; (
+                <span class="tp">HttpStatusCode</span>.BadRequest,
+                <span class="kw">new</span> <span class="tp">ErrorResponse</span>(
+                    <span class="str">"Erro de Validação"</span>,
+                    validationEx.Errors.<span class="fn">Select</span>(e =&gt; e.ErrorMessage).<span class="fn">ToArray</span>())),
 
-            <span class="tp">KeyNotFoundException</span> n =&gt;
-                (<span class="tp">HttpStatusCode</span>.NotFound,
-                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Não Encontrado"</span>, [n.Message])),
+            <span class="tp">KeyNotFoundException</span> notFoundEx =&gt; (
+                <span class="tp">HttpStatusCode</span>.NotFound,
+                <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Não Encontrado"</span>, [notFoundEx.Message])),
 
-            <span class="tp">InvalidOperationException</span> i =&gt;
-                (<span class="tp">HttpStatusCode</span>.Conflict,
-                 <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Violação de Regra de Negócio"</span>, [i.Message])),
+            <span class="tp">InvalidOperationException</span> invalidOpEx =&gt; (
+                <span class="tp">HttpStatusCode</span>.Conflict,
+                <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Violação de Regra de Negócio"</span>, [invalidOpEx.Message])),
 
-            _ =&gt; (<span class="tp">HttpStatusCode</span>.InternalServerError,
-                  <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Erro Interno do Servidor"</span>,
-                      [<span class="str">"Ocorreu um erro inesperado."</span>]))
+            <span class="tp">ArgumentException</span> argEx =&gt; (
+                <span class="tp">HttpStatusCode</span>.BadRequest,
+                <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Argumento Inválido"</span>, [argEx.Message])),
+
+            _ =&gt; (
+                <span class="tp">HttpStatusCode</span>.InternalServerError,
+                <span class="kw">new</span> <span class="tp">ErrorResponse</span>(<span class="str">"Erro Interno do Servidor"</span>,
+                    [<span class="str">"Ocorreu um erro inesperado."</span>]))
         };
 
-        <span class="cm">// Erro 500 = LogError; Erro 4xx = LogWarning</span>
         <span class="kw">if</span> (statusCode == <span class="tp">HttpStatusCode</span>.InternalServerError)
-            <span class="fn">LogUnhandledException</span>(logger, ex, ex.Message);
+        {
+            <span class="fn">LogUnhandledException</span>(logger, exception, exception.Message);
+        }
         <span class="kw">else</span>
-            <span class="fn">LogHandledException</span>(logger, ex, (<span class="kw">int</span>)statusCode);
+        {
+            <span class="fn">LogHandledException</span>(logger, exception, (<span class="kw">int</span>)statusCode, exception.Message);
+        }
 
-        ctx.Response.StatusCode = (<span class="kw">int</span>)statusCode;
-        ctx.Response.ContentType = <span class="str">"application/json"</span>;
-        <span class="kw">await</span> ctx.Response.<span class="fn">WriteAsJsonAsync</span>(errorResponse, JsonOptions);
+        context.Response.StatusCode = (<span class="kw">int</span>)statusCode;
+        context.Response.ContentType = <span class="str">"application/json"</span>;
+
+        <span class="kw">var</span> json = <span class="tp">JsonSerializer</span>.<span class="fn">Serialize</span>(errorResponse, JsonOptions);
+
+        <span class="kw">await</span> context.Response.<span class="fn">WriteAsync</span>(json);
     }
 
-    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Error, Message = <span class="str">"Unhandled: {Message}"</span>)]
-    <span class="kw">private static partial void</span> <span class="fn">LogUnhandledException</span>(<span class="tp">ILogger</span> logger, <span class="tp">Exception</span> ex, <span class="kw">string</span> message);
+    [<span class="at">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Error, Message = <span class="str">"Exceção não tratada: {ExceptionMessage}"</span>)]
+    <span class="kw">private static partial void</span> <span class="fn">LogUnhandledException</span>(<span class="tp">ILogger</span> logger, <span class="tp">Exception</span> exception, <span class="kw">string</span> exceptionMessage);
 
-    [<span class="tp">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Warning, Message = <span class="str">"Handled: {StatusCode}"</span>)]
-    <span class="kw">private static partial void</span> <span class="fn">LogHandledException</span>(<span class="tp">ILogger</span> logger, <span class="tp">Exception</span> ex, <span class="kw">int</span> statusCode);
+    [<span class="at">LoggerMessage</span>(Level = <span class="tp">LogLevel</span>.Warning, Message = <span class="str">"Exceção tratada: {StatusCode} - {ExceptionMessage}"</span>)]
+    <span class="kw">private static partial void</span> <span class="fn">LogHandledException</span>(<span class="tp">ILogger</span> logger, <span class="tp">Exception</span> exception, <span class="kw">int</span> statusCode, <span class="kw">string</span> exceptionMessage);
 }
 
 <span class="kw">public sealed record</span> <span class="tp">ErrorResponse</span>(<span class="kw">string</span> Title, <span class="kw">string</span>[] Errors);</code></pre>
 
 <div class="callout callout--danger">
     <div class="callout-title">🔒 Segurança — Information Disclosure</div>
-    <p>Para erro 500, a mensagem é genérica: <code>"Ocorreu um erro inesperado."</code> — <strong>nunca exponha stack traces ao client</strong> (OWASP). O log completo vai para Serilog/Seq. Erros 4xx usam <code>LogWarning</code> (esperados), não <code>LogError</code> — evita alertas falsos. A classe é <code>partial</code> para suportar os métodos <code>[LoggerMessage]</code> gerados em compile-time. <code>JsonSerializerOptions</code> é cachedo em <code>static readonly</code> para evitar alocações repetidas (CA1869).</p>
+    <p>Para erro 500, a mensagem é genérica: <code>"Ocorreu um erro inesperado."</code> — <strong>nunca exponha stack traces ao client</strong> (OWASP). O log completo vai para Serilog/Seq. Erros 4xx usam <code>LogWarning</code> (esperados), não <code>LogError</code> — evita alertas falsos.</p>
+</div>
+
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ Middleware vs Exception Filter</div>
+    <p><strong>Decisão:</strong> Tratamento global de exceções via <code>IMiddleware</code>, não via <code>IExceptionFilter</code> do MVC.</p>
+    <p><strong>Diferença:</strong> Middleware intercepta <strong>qualquer</strong> exceção no pipeline HTTP (inclusive de outros middlewares). Exception Filter intercepta apenas exceções de controllers/actions. Para uma API que pode ter exceções em autenticação, rate limiting, ou custom middleware, o middleware é mais abrangente.</p>
+    <p><strong>Alternativa moderna (.NET 8+):</strong> <code>IExceptionHandler</code> com <code>app.UseExceptionHandler()</code> — funciona como middleware mas com API mais limpa e suporte a <code>ProblemDetails</code> nativo. O OrderFlow evolui para isso na Fase 05.</p>
+</div>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Pattern matching com switch expression</div>
+    <p><strong>Switch expression + desconstrução de tupla</strong> — o C# resolve o tipo da exception e retorna status code + resposta em uma expressão. O <code>_</code> é o <strong>discard pattern</strong> (catch-all). A ordem importa: tipos mais específicos primeiro, genéricos depois.</p>
+    <p><strong>Por que <code>LoggerMessage</code> source-generated?</strong> O atributo <code>[LoggerMessage]</code> gera código em compile-time que evita boxing de parâmetros e alocações de string em runtime. Com <code>TreatWarningsAsErrors=true</code>, os warnings CA1848/CA1873 bloqueiam o build se usar <code>logger.LogInformation()</code> diretamente — a classe precisa ser <code>partial</code> para que o source generator funcione.</p>
+    <p><strong>Por que <code>JsonSerializerOptions</code> estático?</strong> Instanciar <code>new JsonSerializerOptions</code> a cada request é custoso (reflection + cache interno). O campo <code>private static readonly</code> é criado uma vez e reutilizado. O warning CA1869 bloqueia o build se instanciar inline.</p>
 </div>
 
 <!-- ====== 4.12 HostingExtensions ====== -->
@@ -2063,6 +2459,36 @@ app.<span class="fn">Run</span>();
     <p><strong><code>public partial class Program;</code></strong> — permite <code>WebApplicationFactory&lt;Program&gt;</code> nos testes de integração.</p>
 </div>
 
+<!-- ====== 4.14 appsettings.json ====== -->
+<h3>4.14 Catalog API — appsettings.json</h3>
+
+<div class="code-filepath">src/Services/Catalog/OrderFlow.Catalog.Api/appsettings.json</div>
+<pre><code>{
+  <span class="str">"ConnectionStrings"</span>: {
+    <span class="str">"CatalogDb"</span>: <span class="str">"Server=localhost,1433;Database=OrderFlow_Catalog;User Id=sa;Password=OrderFlow@2026!;TrustServerCertificate=true"</span>
+  },
+  <span class="str">"Seq"</span>: {
+    <span class="str">"Url"</span>: <span class="str">"http://localhost:5341"</span>
+  },
+  <span class="str">"Serilog"</span>: {
+    <span class="str">"MinimumLevel"</span>: {
+      <span class="str">"Default"</span>: <span class="str">"Information"</span>,
+      <span class="str">"Override"</span>: {
+        <span class="str">"Microsoft.AspNetCore"</span>: <span class="str">"Warning"</span>,
+        <span class="str">"Microsoft.EntityFrameworkCore"</span>: <span class="str">"Warning"</span>,
+        <span class="str">"System"</span>: <span class="str">"Warning"</span>
+      }
+    }
+  },
+  <span class="str">"AllowedHosts"</span>: <span class="str">"*"</span>
+}</code></pre>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Configuração por ambiente</div>
+    <p><strong><code>Serilog.MinimumLevel.Override</code>:</strong> Reduz verbosidade de logs internos. <code>Microsoft.AspNetCore: Warning</code> suprime logs como "Request starting HTTP/1.1 GET /api/..." (que são <code>Information</code>). Sem isso, cada request geraria 3-4 linhas de log do framework, poluindo a saída. Logs do <strong>seu código</strong> continuam em <code>Information</code>.</p>
+    <p><strong><code>TrustServerCertificate=true</code>:</strong> Aceita certificados auto-assinados. <strong>Apenas para desenvolvimento!</strong> Em produção, configure certificados TLS válidos. Sem essa flag, a conexão falha porque o SQL Server em Docker usa certificado self-signed.</p>
+</div>
+
 <div class="divider"></div>
 
 <!-- ============================================================ -->
@@ -2081,43 +2507,76 @@ app.<span class="fn">Run</span>();
 <h3>WebApplicationFactory — Teste de Integração Real</h3>
 
 <div class="code-filepath">tests/OrderFlow.Catalog.Api.Tests/CustomWebApplicationFactory.cs</div>
-<pre><code><span class="kw">public class</span> <span class="tp">CustomWebApplicationFactory</span> : <span class="tp">WebApplicationFactory</span>&lt;<span class="tp">Program</span>&gt;
+<pre><code><span class="kw">using</span> <span class="tp">Microsoft.AspNetCore.Hosting</span>;
+<span class="kw">using</span> <span class="tp">Microsoft.AspNetCore.Mvc.Testing</span>;
+<span class="kw">using</span> <span class="tp">Microsoft.EntityFrameworkCore</span>;
+<span class="kw">using</span> <span class="tp">Microsoft.Extensions.DependencyInjection</span>;
+<span class="kw">using</span> <span class="tp">Microsoft.Extensions.DependencyInjection.Extensions</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Infrastructure.Data</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Api.Tests</span>;
+
+<span class="kw">public class</span> <span class="tp">CustomWebApplicationFactory</span> : <span class="tp">WebApplicationFactory</span>&lt;<span class="tp">Program</span>&gt;
 {
+    <span class="kw">private readonly string</span> _dbName = <span class="str">"CatalogTestDb_"</span> + <span class="tp">Guid</span>.<span class="fn">NewGuid</span>();
+
     <span class="kw">protected override void</span> <span class="fn">ConfigureWebHost</span>(<span class="tp">IWebHostBuilder</span> builder)
     {
         builder.<span class="fn">ConfigureServices</span>(services =&gt;
         {
-            <span class="cm">// Remove TODOS os registros do DbContext (inclui Options, Pool, etc.)</span>
-            services.<span class="fn">RemoveAll</span>(<span class="kw">typeof</span>(<span class="tp">DbContextOptions</span>&lt;<span class="tp">CatalogDbContext</span>&gt;));
+            <span class="cm">// Remove todos os registros de DbContext e suas opções</span>
+            services.<span class="fn">RemoveAll</span>&lt;<span class="tp">CatalogDbContext</span>&gt;();
+            services.<span class="fn">RemoveAll</span>&lt;<span class="tp">DbContextOptions</span>&lt;<span class="tp">CatalogDbContext</span>&gt;&gt;();
 
-            <span class="cm">// Registra manualmente com InMemory (sem AddDbContext)</span>
-            <span class="kw">var</span> dbName = <span class="str">"CatalogTestDb_"</span> + <span class="tp">Guid</span>.<span class="fn">NewGuid</span>();
-            services.<span class="fn">AddScoped</span>(sp =&gt;
+            <span class="cm">// Remove health checks que dependem do SQL Server</span>
+            services.<span class="fn">RemoveAll</span>&lt;<span class="tp">Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck</span>&gt;();
+
+            <span class="cm">// Registra CatalogDbContext com InMemory (evita conflito de providers)</span>
+            services.<span class="fn">AddScoped</span>(_ =&gt;
             {
                 <span class="kw">var</span> options = <span class="kw">new</span> <span class="tp">DbContextOptionsBuilder</span>&lt;<span class="tp">CatalogDbContext</span>&gt;()
-                    .<span class="fn">UseInMemoryDatabase</span>(dbName)
+                    .<span class="fn">UseInMemoryDatabase</span>(_dbName)
                     .Options;
                 <span class="kw">return new</span> <span class="tp">CatalogDbContext</span>(options);
             });
         });
+
         builder.<span class="fn">UseEnvironment</span>(<span class="str">"Testing"</span>);
     }
 }</code></pre>
 
+<div class="callout callout--arch">
+    <div class="callout-title">🏛️ WebApplicationFactory: teste de integração real</div>
+    <p><strong>O que faz:</strong> Sobe a aplicação <strong>inteira</strong> em memória — DI container, middleware pipeline, controllers — mas substitui o banco real por InMemory. É o mais próximo de testar "em produção" sem precisar de infraestrutura externa.</p>
+    <p><strong>InMemory vs Testcontainers:</strong> InMemory é rápido mas não testa SQL real (constraints, migrations, query filters podem se comportar diferente). Na Fase 05, o OrderFlow migra para <strong>Testcontainers</strong> que sobe um SQL Server real em Docker para cada test run. Para Fase 01, InMemory é suficiente e mais didático.</p>
+</div>
+
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Service replacement pattern</div>
+    <p><strong><code>RemoveAll + manual registration</code></strong> — remove <strong>todos</strong> os registros do <code>CatalogDbContext</code> e suas opções (incluindo os serviços internos do provider SqlServer). Em seguida, registra manualmente via <code>AddScoped</code> com <code>new DbContextOptionsBuilder&lt;CatalogDbContext&gt;()</code> — isso evita o conflito de providers EF Core (SqlServer + InMemory registrados simultaneamente via <code>AddDbContext</code>), que causa o erro "Services for database providers 'SqlServer', 'InMemory' have been registered". O <code>Guid.NewGuid()</code> no nome do banco garante isolamento entre testes.</p>
+</div>
+
 <h3>Exemplos de Testes</h3>
 
 <div class="code-filepath">tests/OrderFlow.Catalog.Api.Tests/CategoriesControllerTests.cs</div>
-<pre><code><span class="kw">public class</span> <span class="tp">CategoriesControllerTests</span>(<span class="tp">CustomWebApplicationFactory</span> factory)
+<pre><code><span class="kw">using</span> <span class="tp">System.Net</span>;
+<span class="kw">using</span> <span class="tp">System.Net.Http.Json</span>;
+<span class="kw">using</span> <span class="tp">FluentAssertions</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Application.DTOs</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Api.Tests</span>;
+
+<span class="kw">public class</span> <span class="tp">CategoriesControllerTests</span>(<span class="tp">CustomWebApplicationFactory</span> factory)
     : <span class="tp">IClassFixture</span>&lt;<span class="tp">CustomWebApplicationFactory</span>&gt;
 {
     <span class="kw">private readonly</span> <span class="tp">HttpClient</span> _client = factory.<span class="fn">CreateClient</span>();
 
     <span class="kw">private async</span> <span class="tp">Task</span>&lt;<span class="tp">CategoryDto</span>&gt; <span class="fn">CreateCategoryAsync</span>(
-        <span class="kw">string</span>? name = <span class="kw">null</span>)
+        <span class="kw">string</span>? name = <span class="kw">null</span>, <span class="kw">string</span>? description = <span class="kw">null</span>)
     {
         <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateCategoryRequest</span>(
             name ?? $<span class="str">"Categoria {Guid.NewGuid():N}"</span>[..<span class="num">30</span>],
-            <span class="str">"Descrição de teste"</span>);
+            description ?? <span class="str">"Descrição de teste"</span>);
         <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
             <span class="str">"/api/v1/categories"</span>, request);
         response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
@@ -2125,21 +2584,160 @@ app.<span class="fn">Run</span>();
             .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">CategoryDto</span>&gt;())!;
     }
 
-    <span class="cm">// 8 testes: Create, GetAll, GetById, Update, Delete,</span>
-    <span class="cm">//           DuplicateName(409), EmptyName(400), NotFound(404)</span>
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_ValidCategory_ReturnsCreated</span>()
+    {
+        <span class="cm">// Arrange</span>
+        <span class="kw">var</span> name = $<span class="str">"Eletrônicos {Guid.NewGuid():N}"</span>[..<span class="num">30</span>];
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateCategoryRequest</span>(name, <span class="str">"Dispositivos eletrônicos"</span>);
+
+        <span class="cm">// Act</span>
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(<span class="str">"/api/v1/categories"</span>, request);
+
+        <span class="cm">// Assert</span>
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
+        <span class="kw">var</span> category = <span class="kw">await</span> response.Content.<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">CategoryDto</span>&gt;();
+        category.<span class="fn">Should</span>().<span class="fn">NotBeNull</span>();
+        category!.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(name);
+        category.Id.<span class="fn">Should</span>().<span class="fn">NotBeEmpty</span>();
+        category.IsActive.<span class="fn">Should</span>().<span class="fn">BeTrue</span>();
+        category.CreatedAt.<span class="fn">Should</span>().<span class="fn">BeCloseTo</span>(
+            <span class="tp">DateTime</span>.UtcNow, <span class="tp">TimeSpan</span>.<span class="fn">FromSeconds</span>(<span class="num">5</span>));
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">GetAll_WithActiveCategories_ReturnsOk</span>()
+    {
+        <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">GetAsync</span>(<span class="str">"/api/v1/categories"</span>);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.OK);
+        <span class="kw">var</span> categories = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">List</span>&lt;<span class="tp">CategoryDto</span>&gt;&gt;();
+        categories.<span class="fn">Should</span>().<span class="fn">NotBeNull</span>();
+        categories!.Count.<span class="fn">Should</span>().<span class="fn">BeGreaterThanOrEqualTo</span>(<span class="num">2</span>);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">GetById_ExistingCategory_ReturnsOk</span>()
+    {
+        <span class="kw">var</span> created = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">GetAsync</span>(
+            $<span class="str">"/api/v1/categories/{created.Id}"</span>);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.OK);
+        <span class="kw">var</span> category = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">CategoryDto</span>&gt;();
+        category!.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(created.Name);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">GetById_NonExistentCategory_ReturnsNotFound</span>()
+    {
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">GetAsync</span>(
+            $<span class="str">"/api/v1/categories/{Guid.NewGuid()}"</span>);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NotFound);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Update_ExistingCategory_ReturnsOk</span>()
+    {
+        <span class="kw">var</span> created = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> updateRequest = <span class="kw">new</span> <span class="tp">UpdateCategoryRequest</span>(
+            <span class="str">"Nome Atualizado"</span>, <span class="str">"Descrição atualizada"</span>);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PutAsJsonAsync</span>(
+            $<span class="str">"/api/v1/categories/{created.Id}"</span>, updateRequest);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.OK);
+        <span class="kw">var</span> updated = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">CategoryDto</span>&gt;();
+        updated!.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"Nome Atualizado"</span>);
+        updated.Description.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"Descrição atualizada"</span>);
+        updated.UpdatedAt.<span class="fn">Should</span>().<span class="fn">NotBeNull</span>();
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Delete_ExistingCategory_ReturnsNoContent</span>()
+    {
+        <span class="kw">var</span> created = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">DeleteAsync</span>(
+            $<span class="str">"/api/v1/categories/{created.Id}"</span>);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NoContent);
+        <span class="kw">var</span> getResponse = <span class="kw">await</span> _client.<span class="fn">GetAsync</span>(
+            $<span class="str">"/api/v1/categories/{created.Id}"</span>);
+        getResponse.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NotFound);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_DuplicateName_ReturnsConflict</span>()
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/categories"</span>,
+            <span class="kw">new</span> <span class="tp">CreateCategoryRequest</span>(category.Name, <span class="kw">null</span>));
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Conflict);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_EmptyName_ReturnsBadRequest</span>()
+    {
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateCategoryRequest</span>(<span class="str">""</span>, <span class="kw">null</span>);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/categories"</span>, request);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.BadRequest);
+    }
 }</code></pre>
 
+<div class="callout callout--eng">
+    <div class="callout-title">🔬 Anatomia dos testes de integração</div>
+    <p><strong><code>IClassFixture&lt;T&gt;</code></strong> — xUnit cria <strong>uma</strong> instância do factory para toda a classe de testes. <code>factory.CreateClient()</code> retorna um <code>HttpClient</code> que faz requests para a aplicação in-memory. <strong>Primary constructor</strong> injeta o fixture.</p>
+    <p><strong>Helper method <code>CreateCategoryAsync()</code></strong> — encapsula a criação com nomes únicos via <code>Guid.NewGuid()</code>. A asserção <code>Should().Be(Created)</code> no helper garante <strong>fail-fast</strong>: se o setup falha, o erro é claro e imediato.</p>
+    <p><strong>Padrão AAA (Arrange-Act-Assert)</strong> — cada teste segue essa estrutura. <strong>FluentAssertions</strong> (<code>Should().Be()</code>) é mais legível que <code>Assert.Equal()</code> e gera mensagens de erro melhores quando falha.</p>
+    <p><strong>Cobertura de cenários (8 testes):</strong> Happy path (Create, GetAll, GetById, Update, Delete), Edge cases (NotFound, Conflict/nome duplicado, BadRequest/validação).</p>
+</div>
+
 <div class="code-filepath">tests/OrderFlow.Catalog.Api.Tests/ProductsControllerTests.cs</div>
-<pre><code><span class="kw">public class</span> <span class="tp">ProductsControllerTests</span>(<span class="tp">CustomWebApplicationFactory</span> factory)
+<pre><code><span class="kw">using</span> <span class="tp">System.Net</span>;
+<span class="kw">using</span> <span class="tp">System.Net.Http.Json</span>;
+<span class="kw">using</span> <span class="tp">FluentAssertions</span>;
+<span class="kw">using</span> <span class="tp">OrderFlow.Catalog.Application.DTOs</span>;
+
+<span class="kw">namespace</span> <span class="tp">OrderFlow.Catalog.Api.Tests</span>;
+
+<span class="kw">public class</span> <span class="tp">ProductsControllerTests</span>(<span class="tp">CustomWebApplicationFactory</span> factory)
     : <span class="tp">IClassFixture</span>&lt;<span class="tp">CustomWebApplicationFactory</span>&gt;
 {
     <span class="kw">private readonly</span> <span class="tp">HttpClient</span> _client = factory.<span class="fn">CreateClient</span>();
 
+    <span class="kw">private async</span> <span class="tp">Task</span>&lt;<span class="tp">CategoryDto</span>&gt; <span class="fn">CreateCategoryAsync</span>()
+    {
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateCategoryRequest</span>(
+            $<span class="str">"Categoria Teste {Guid.NewGuid():N}"</span>[..<span class="num">30</span>],
+            <span class="str">"Categoria para testes"</span>);
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/categories"</span>, request);
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
+        <span class="kw">return</span> (<span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">CategoryDto</span>&gt;())!;
+    }
+
     <span class="kw">private async</span> <span class="tp">Task</span>&lt;<span class="tp">ProductDto</span>&gt; <span class="fn">CreateProductAsync</span>(
-        <span class="tp">Guid</span> categoryId, <span class="kw">string</span>? sku = <span class="kw">null</span>)
+        <span class="tp">Guid</span> categoryId, <span class="kw">string</span>? name = <span class="kw">null</span>, <span class="kw">string</span>? sku = <span class="kw">null</span>)
     {
         <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateProductRequest</span>(
-            <span class="str">"Produto Teste"</span>, <span class="str">"Descrição de teste"</span>,
+            name ?? <span class="str">"Produto Teste"</span>,
+            <span class="str">"Descrição de teste"</span>,
             sku ?? $<span class="str">"SKU-{Guid.NewGuid():N}"</span>[..<span class="num">20</span>],
             <span class="num">99.99m</span>, <span class="num">10</span>, categoryId);
         <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
@@ -2147,6 +2745,142 @@ app.<span class="fn">Run</span>();
         response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
         <span class="kw">return</span> (<span class="kw">await</span> response.Content
             .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">ProductDto</span>&gt;())!;
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_ValidProduct_ReturnsCreated</span>()
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> sku = $<span class="str">"LAPTOP-{Guid.NewGuid():N}"</span>[..<span class="num">20</span>];
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateProductRequest</span>(
+            <span class="str">"Laptop Pro"</span>, <span class="str">"Laptop de alta performance"</span>,
+            sku, <span class="num">2999.99m</span>, <span class="num">10</span>, category.Id);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/products"</span>, request);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Created);
+        <span class="kw">var</span> product = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">ProductDto</span>&gt;();
+        product.<span class="fn">Should</span>().<span class="fn">NotBeNull</span>();
+        product!.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"Laptop Pro"</span>);
+        product.Sku.<span class="fn">Should</span>().<span class="fn">Be</span>(sku.<span class="fn">ToUpperInvariant</span>());
+        product.Price.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="num">2999.99m</span>);
+        product.IsActive.<span class="fn">Should</span>().<span class="fn">BeTrue</span>();
+        product.CategoryId.<span class="fn">Should</span>().<span class="fn">Be</span>(category.Id);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">GetById_ExistingProduct_ReturnsOk</span>()
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> created = <span class="kw">await</span> <span class="fn">CreateProductAsync</span>(category.Id);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">GetAsync</span>(
+            $<span class="str">"/api/v1/products/{created.Id}"</span>);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.OK);
+        <span class="kw">var</span> product = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">ProductDto</span>&gt;();
+        product!.Id.<span class="fn">Should</span>().<span class="fn">Be</span>(created.Id);
+        product.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(created.Name);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">GetById_NonExistentProduct_ReturnsNotFound</span>()
+    {
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">GetAsync</span>(
+            $<span class="str">"/api/v1/products/{Guid.NewGuid()}"</span>);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NotFound);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Search_WithTerm_ReturnsFilteredResults</span>()
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">await</span> <span class="fn">CreateProductAsync</span>(category.Id,
+            <span class="str">"Wireless Mouse"</span>, $<span class="str">"MOUSE-{Guid.NewGuid():N}"</span>[..<span class="num">20</span>]);
+        <span class="kw">await</span> <span class="fn">CreateProductAsync</span>(category.Id,
+            <span class="str">"Wireless Keyboard"</span>, $<span class="str">"KB-{Guid.NewGuid():N}"</span>[..<span class="num">20</span>]);
+        <span class="kw">await</span> <span class="fn">CreateProductAsync</span>(category.Id,
+            <span class="str">"Monitor 27 polegadas"</span>, $<span class="str">"MON-{Guid.NewGuid():N}"</span>[..<span class="num">20</span>]);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">GetAsync</span>(
+            <span class="str">"/api/v1/products?searchTerm=Wireless"</span>);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.OK);
+        <span class="kw">var</span> result = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">PagedResult</span>&lt;<span class="tp">ProductDto</span>&gt;&gt;();
+        result.<span class="fn">Should</span>().<span class="fn">NotBeNull</span>();
+        result!.Items.<span class="fn">Should</span>().<span class="fn">HaveCountGreaterThanOrEqualTo</span>(<span class="num">2</span>);
+        result.Items.<span class="fn">Should</span>().<span class="fn">OnlyContain</span>(
+            p =&gt; p.Name.<span class="fn">Contains</span>(<span class="str">"Wireless"</span>));
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Update_ExistingProduct_ReturnsOk</span>()
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> created = <span class="kw">await</span> <span class="fn">CreateProductAsync</span>(category.Id);
+        <span class="kw">var</span> updateRequest = <span class="kw">new</span> <span class="tp">UpdateProductRequest</span>(
+            <span class="str">"Nome Atualizado"</span>, <span class="str">"Descrição atualizada"</span>,
+            <span class="num">199.99m</span>, <span class="num">50</span>);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PutAsJsonAsync</span>(
+            $<span class="str">"/api/v1/products/{created.Id}"</span>, updateRequest);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.OK);
+        <span class="kw">var</span> updated = <span class="kw">await</span> response.Content
+            .<span class="fn">ReadFromJsonAsync</span>&lt;<span class="tp">ProductDto</span>&gt;();
+        updated!.Name.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="str">"Nome Atualizado"</span>);
+        updated.Price.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="num">199.99m</span>);
+        updated.StockQuantity.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="num">50</span>);
+        updated.UpdatedAt.<span class="fn">Should</span>().<span class="fn">NotBeNull</span>();
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_DuplicateSku_ReturnsConflict</span>()
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> sku = $<span class="str">"DUP-{Guid.NewGuid():N}"</span>[..<span class="num">15</span>];
+        <span class="kw">await</span> <span class="fn">CreateProductAsync</span>(category.Id, sku: sku);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/products"</span>,
+            <span class="kw">new</span> <span class="tp">CreateProductRequest</span>(
+                <span class="str">"Produto 2"</span>, <span class="kw">null</span>, sku, <span class="num">20m</span>, <span class="num">2</span>, category.Id));
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.Conflict);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_EmptyName_ReturnsBadRequest</span>()
+    {
+        <span class="kw">var</span> category = <span class="kw">await</span> <span class="fn">CreateCategoryAsync</span>();
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateProductRequest</span>(
+            <span class="str">""</span>, <span class="kw">null</span>,
+            $<span class="str">"SKU-{Guid.NewGuid():N}"</span>[..<span class="num">15</span>],
+            <span class="num">10m</span>, <span class="num">1</span>, category.Id);
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/products"</span>, request);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.BadRequest);
+    }
+
+    [<span class="at">Fact</span>]
+    <span class="kw">public async</span> <span class="tp">Task</span> <span class="fn">Create_InvalidCategoryId_ReturnsNotFound</span>()
+    {
+        <span class="kw">var</span> request = <span class="kw">new</span> <span class="tp">CreateProductRequest</span>(
+            <span class="str">"Produto Teste"</span>, <span class="kw">null</span>,
+            $<span class="str">"SKU-{Guid.NewGuid():N}"</span>[..<span class="num">15</span>],
+            <span class="num">10m</span>, <span class="num">1</span>, <span class="tp">Guid</span>.<span class="fn">NewGuid</span>());
+
+        <span class="kw">var</span> response = <span class="kw">await</span> _client.<span class="fn">PostAsJsonAsync</span>(
+            <span class="str">"/api/v1/products"</span>, request);
+
+        response.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NotFound);
     }
 
     [<span class="at">Fact</span>]
@@ -2164,17 +2898,14 @@ app.<span class="fn">Run</span>();
             .<span class="fn">GetAsync</span>($<span class="str">"/api/v1/products/{created.Id}"</span>);
         getResponse.StatusCode.<span class="fn">Should</span>().<span class="fn">Be</span>(<span class="tp">HttpStatusCode</span>.NotFound);
     }
-
-    <span class="cm">// 9 testes: Create, GetById, Search, Update, Delete,</span>
-    <span class="cm">//           DuplicateSku(409), EmptyName(400), InvalidCategory(404), NotFound(404)</span>
 }</code></pre>
 
 <div class="callout callout--eng">
-    <div class="callout-title">🔬 Boas Práticas nos Testes</div>
-    <p><strong>Helper methods com asserções (fail-fast)</strong> — <code>CreateCategoryAsync</code> e <code>CreateProductAsync</code> incluem <code>Should().Be(Created)</code>. Se o setup falha, o erro é imediato e claro.</p>
-    <p><strong>Dados únicos por teste</strong> — <code>Guid.NewGuid()</code> gera unicidade em SKUs e nomes de categorias, evitando colisões entre testes que compartilham o mesmo banco InMemory.</p>
-    <p><strong>17 testes no total</strong> (8 Categories + 9 Products) cobrindo: happy path (CRUD completo), edge cases (duplicatas, validação, IDs inexistentes) e soft delete end-to-end.</p>
-    <p><strong>FluentAssertions</strong> (<code>.Should().Be()</code>) é mais legível que <code>Assert.Equal()</code> e gera mensagens de erro melhores quando falha.</p>
+    <div class="callout-title">🔬 Testes que verificam comportamento, não implementação</div>
+    <p><strong>Helper methods com asserções</strong> — tanto <code>CreateCategoryAsync</code> quanto <code>CreateProductAsync</code> incluem <code>Should().Be(Created)</code>. Isso implementa o padrão <strong>fail-fast no setup</strong>: se a criação falha, o erro é imediato e claro.</p>
+    <p><strong>Teste de soft delete end-to-end</strong> — deleta o produto, depois tenta buscar. O Global Query Filter faz o produto "desaparecer" do GET, provando que o fluxo completo funciona: Controller → Service → Entity.Deactivate → SaveChanges → QueryFilter esconde.</p>
+    <p><strong>Cobertura (9 testes):</strong> Happy path (Create, GetById, Search, Update, Delete), Edge cases (NotFound, Conflict/SKU duplicado, BadRequest/validação, NotFound/categoria inexistente).</p>
+    <p><strong>Dados únicos por teste</strong> — <code>$"SKU-{'{'}Guid.NewGuid():N{'}'}"[..20]</code> gera unicidade; <code>:N</code> remove hífens, <code>[..20]</code> corta no limite. <code>product.Sku.Should().Be(sku.ToUpperInvariant())</code> confirma a normalização da entidade.</p>
 </div>
 
 <div class="divider"></div>
@@ -2184,33 +2915,66 @@ app.<span class="fn">Run</span>();
 <!-- ============================================================ -->
 <h2 id="checkpoint"><span class="num">06.</span> Checkpoint</h2>
 
+<div class="callout callout--think">
+    <div class="callout-title">💡 Por que isso importa no dia-a-dia?</div>
+    <p>Em times reais, a Fase 1 é a fundação que define a <strong>velocidade de todas as fases seguintes</strong>. Um projeto mal estruturado na semana 1 gera débito técnico que multiplica por 10 o custo de cada feature futura. Sêniores sabem: investir 2 dias na estrutura correta economiza 2 meses de refatoração.</p>
+</div>
+
+<h3>Como Validar que a Fase 1 Está Completa</h3>
+
 <ul class="checklist">
     <li><strong>Solution compila sem erros:</strong> <code>dotnet build</code></li>
     <li><strong>Docker Compose sobe:</strong> <code>docker-compose -f docker/docker-compose.yml up -d</code></li>
     <li><strong>SQL Server acessível</strong> na porta 1433</li>
     <li><strong>Seq acessível</strong> em <code>http://localhost:5341</code></li>
-    <li><strong>Migrations rodam</strong></li>
+    <li><strong>Migrations rodam:</strong> <code>dotnet ef database update --project src/Services/Catalog/OrderFlow.Catalog.Infrastructure --startup-project src/Services/Catalog/OrderFlow.Catalog.Api</code></li>
     <li><strong>API responde:</strong> <code>dotnet run --project src/Services/Catalog/OrderFlow.Catalog.Api</code></li>
     <li><strong>Swagger acessível:</strong> <code>http://localhost:5002/swagger</code></li>
     <li><strong>CRUD de Categories funciona</strong> via Swagger/Postman</li>
     <li><strong>CRUD de Products funciona</strong> via Swagger/Postman</li>
     <li><strong>Health checks respondem:</strong> <code>GET /health/live</code> → 200, <code>GET /health/ready</code> → 200</li>
-    <li><strong>Logs aparecem no Seq</strong></li>
+    <li><strong>Logs aparecem no Seq</strong> em <code>http://localhost:5341</code></li>
     <li><strong>Testes passam:</strong> <code>dotnet test</code></li>
     <li><strong>Commit:</strong> <code>feat(catalog): implement Catalog API with CRUD, EF Core, and health checks</code></li>
 </ul>
 
+<h3>Comandos de Verificação</h3>
+
+<pre><code><span class="cm"># Build completo</span>
+dotnet build OrderFlow.sln
+
+<span class="cm"># Rodar todos os testes</span>
+dotnet test OrderFlow.sln --verbosity normal
+
+<span class="cm"># Verificar health</span>
+curl http://localhost:<span class="num">5002</span>/health/live
+curl http://localhost:<span class="num">5002</span>/health/ready
+
+<span class="cm"># Testar CRUD (com httpie ou curl)</span>
+<span class="cm"># Criar categoria</span>
+curl -X POST http://localhost:<span class="num">5002</span>/api/v1/categories \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"name": "Electronics", "description": "Electronic devices"}'</span>
+
+<span class="cm"># Listar categorias</span>
+curl http://localhost:<span class="num">5002</span>/api/v1/categories</code></pre>
+
 <h3>Erros Comuns Nesta Fase</h3>
 
+<div class="callout callout--warn">
+    <div class="callout-title">⚠️ Erros cometidos por 8 em cada 10 devs</div>
+    <p>Conheça esses erros antes de tropeçar neles na primeira implementação de Clean Architecture.</p>
+</div>
+
 <table>
-    <thead><tr><th>#</th><th>Erro</th><th>Solução</th></tr></thead>
+    <thead><tr><th>#</th><th>Erro</th><th>Consequência</th><th>Solução</th></tr></thead>
     <tbody>
-        <tr><td>1</td><td><strong>Referência circular</strong> — Infrastructure referenciando Api</td><td>Revise a Dependency Rule: Domain ← Application ← Infrastructure ← Api</td></tr>
-        <tr><td>2</td><td><strong>Lógica no Controller</strong> — 30+ linhas de if/else</td><td>Se &gt;10 linhas, extraia para Application Service</td></tr>
-        <tr><td>3</td><td><strong>Esquecer CancellationToken</strong> em métodos async</td><td>Todo método async recebe e propaga <code>CancellationToken ct</code></td></tr>
-        <tr><td>4</td><td><strong>Versões diferentes</strong> sem Central Package Management</td><td>Use <code>Directory.Packages.props</code> desde o início</td></tr>
-        <tr><td>5</td><td><strong>Não testar SearchAsync</strong> com filtros combinados</td><td>Escreva testes com combinações de filtros</td></tr>
-        <tr><td>6</td><td><strong>Migration falha → dev apaga o banco</strong></td><td>Aprenda <code>dotnet ef migrations remove</code> e rollback manual</td></tr>
+        <tr><td>1</td><td><strong>Referência circular</strong> — Infrastructure referenciando Api, ou Domain referenciando Infrastructure</td><td>Compilação falha com "circular dependency detected"</td><td>Revise a Dependency Rule: <code>Domain ← Application ← Infrastructure ← Api</code>. Nunca no sentido contrário</td></tr>
+        <tr><td>2</td><td><strong>Lógica de negócio no Controller</strong> — Controller com 30+ linhas de if/else</td><td>Controller vira God Class, impossível testar isoladamente</td><td>Se o controller tem mais que 5-10 linhas, extraia para Application/Service</td></tr>
+        <tr><td>3</td><td><strong>Esquecer <code>CancellationToken</code></strong> em métodos async</td><td>Requests canceladas continuam processando, desperdiçando CPU</td><td>Todo método async recebe e propaga <code>CancellationToken ct</code> como último parâmetro</td></tr>
+        <tr><td>4</td><td><strong>Copiar <code>.csproj</code> com versões diferentes</strong> sem Central Package Management</td><td>FluentValidation 11.9 no Catalog, 11.11 no Orders → comportamentos diferentes</td><td>Use <code>Directory.Packages.props</code> desde o início</td></tr>
+        <tr><td>5</td><td><strong>Não testar <code>SearchAsync</code></strong> com filtros combinados</td><td>SQL gerado pelo EF Core com múltiplos <code>.Where()</code> pode gerar query lenta ou incorreta</td><td>Escreva testes com combinações: sem filtro, com 1, com 2, com todos</td></tr>
+        <tr><td>6</td><td><strong>Migration falha e dev apaga o banco</strong></td><td>Perde dados de desenvolvimento, não aprende a resolver conflitos</td><td>Aprenda <code>dotnet ef migrations remove</code>, <code>Script-Migration</code>, e rollback manual</td></tr>
     </tbody>
 </table>
 
@@ -2219,17 +2983,41 @@ app.<span class="fn">Run</span>();
 <table>
     <thead><tr><th>Sintoma</th><th>Causa Provável</th><th>Solução</th></tr></thead>
     <tbody>
-        <tr><td>SA_PASSWORD rejeitada</td><td>Senha não atende complexidade</td><td>Use <code>OrderFlow@2026!</code></td></tr>
-        <tr><td>Porta 1433 em uso</td><td>Outro SQL Server rodando</td><td><code>netstat -ano | findstr 1433</code></td></tr>
-        <tr><td>Migration falha com "Login failed"</td><td>Container não está healthy</td><td><code>docker ps</code> — espere <code>(healthy)</code></td></tr>
+        <tr><td><code>SA_PASSWORD</code> rejeitada pelo SQL Server</td><td>Senha não atende complexidade (8+ chars, maiúscula, minúscula, número, especial)</td><td>Use <code>OrderFlow@2026!</code> ou similar</td></tr>
+        <tr><td>Porta 1433 já em uso</td><td>SQL Server local ou outro container usando a porta</td><td><code>netstat -ano | findstr 1433</code> para encontrar; mude a porta no compose</td></tr>
+        <tr><td>Migration falha com "Login failed"</td><td>Container não está healthy (demora ~10-30s)</td><td><code>docker ps</code> deve mostrar <code>(healthy)</code>, não <code>(health: starting)</code></td></tr>
+        <tr><td>Seq não abre no browser</td><td>Porta 5341 mapeada para porta 80 do container</td><td>Acesse <code>http://localhost:5341</code> (não 80)</td></tr>
         <tr><td><code>dotnet ef</code> não encontrado</td><td>Global tool não instalada</td><td><code>dotnet tool install --global dotnet-ef</code></td></tr>
+        <tr><td>"No project was found" no ef migrations</td><td>Path do <code>--project</code> ou <code>--startup-project</code> errado</td><td>Use caminhos relativos à raiz da solution</td></tr>
+        <tr><td>Swagger não mostra endpoints</td><td>Controller não tem <code>[ApiController]</code> ou route</td><td>Verifique <code>[Route("api/v1/[controller]")]</code> no controller</td></tr>
+        <tr><td>Health check <code>/health/ready</code> retorna Unhealthy</td><td>SQL Server não acessível (connection string errada ou container down)</td><td><code>docker compose logs sqlserver</code> para verificar</td></tr>
     </tbody>
 </table>
 
-<div class="callout callout--warn">
+<div class="callout callout--tip">
     <div class="callout-title">💡 Regra dos 3 Passos para Debugar</div>
     <p>(1) <code>docker ps</code> — o container está rodando? (2) <code>docker compose logs &lt;serviço&gt;</code> — tem erro no log? (3) Verifique connection string no <code>appsettings.Development.json</code>. <strong>Em 90% dos casos, está em um desses três.</strong></p>
 </div>
+
+<div class="divider"></div>
+
+<h3>📋 Resumo de Artefatos Criados</h3>
+
+<table>
+    <thead><tr><th>Artefato</th><th>Arquivo/Local</th></tr></thead>
+    <tbody>
+        <tr><td>Solution .NET</td><td><code>OrderFlow.sln</code></td></tr>
+        <tr><td>Configurações MSBuild</td><td><code>Directory.Build.props</code>, <code>Directory.Packages.props</code>, <code>global.json</code></td></tr>
+        <tr><td>SharedKernel</td><td><code>src/BuildingBlocks/OrderFlow.SharedKernel/</code></td></tr>
+        <tr><td>Catalog Domain</td><td><code>Product.cs</code>, <code>Category.cs</code>, <code>IProductRepository.cs</code></td></tr>
+        <tr><td>Catalog Application</td><td><code>ProductService.cs</code>, <code>CreateProductRequest.cs</code>, validators</td></tr>
+        <tr><td>Catalog Infrastructure</td><td><code>CatalogDbContext.cs</code>, <code>ProductRepository.cs</code>, migrations</td></tr>
+        <tr><td>Catalog Api</td><td><code>ProductsController.cs</code>, <code>CategoriesController.cs</code>, <code>Program.cs</code>, <code>Extensions/HostingExtensions.cs</code></td></tr>
+        <tr><td>Docker Compose</td><td><code>docker/docker-compose.yml</code> + <code>.env</code></td></tr>
+        <tr><td>Testes</td><td><code>OrderFlow.Catalog.Api.Tests/</code></td></tr>
+        <tr><td>Config files</td><td><code>.editorconfig</code>, <code>.gitignore</code>, <code>nuget.config</code></td></tr>
+    </tbody>
+</table>
 
 <div class="divider"></div>
 
