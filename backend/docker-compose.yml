@@ -1,0 +1,264 @@
+# Docker Compose — Stack completa (infra + APIs + Gateway)
+# Uso: docker compose -f backend/docker-compose.yml --env-file backend/.env up -d --build
+#
+# Para subir apenas infra (dev local), use backend/docker/docker-compose.yml.
+
+services:
+  # ============== INFRAESTRUTURA ==============
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: orderflow-sqlserver
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD}"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/lib/mssql/data
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - orderflow-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: orderflow-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - orderflow-net
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: orderflow-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD}"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - orderflow-net
+
+  seq:
+    image: datalust/seq:latest
+    container_name: orderflow-seq
+    restart: unless-stopped
+    ports:
+      - "5341:80"
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "true"
+    volumes:
+      - seq-data:/data
+    networks:
+      - orderflow-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: orderflow-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - orderflow-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: orderflow-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - orderflow-net
+
+  # ============== APLICAÇÃO ==============
+  identity-api:
+    build:
+      context: .
+      dockerfile: src/Services/Identity/OrderFlow.Identity.Api/Dockerfile
+    image: orderflow/identity-api:latest
+    container_name: orderflow-identity-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__IdentityDb: "Server=sqlserver,1433;Database=OrderFlow_Identity;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True"
+      JwtSettings__Secret: "${JWT_SECRET}"
+      Serilog__WriteTo__1__Name: "Seq"
+      Serilog__WriteTo__1__Args__serverUrl: "http://seq:80"
+      OpenTelemetry__OtlpEndpoint: ""
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - orderflow-net
+
+  catalog-api:
+    build:
+      context: .
+      dockerfile: src/Services/Catalog/OrderFlow.Catalog.Api/Dockerfile
+    image: orderflow/catalog-api:latest
+    container_name: orderflow-catalog-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__CatalogDb: "Server=sqlserver,1433;Database=OrderFlow_Catalog;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True"
+      ConnectionStrings__Redis: "redis:6379"
+      Serilog__WriteTo__1__Name: "Seq"
+      Serilog__WriteTo__1__Args__serverUrl: "http://seq:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - orderflow-net
+
+  orders-api:
+    build:
+      context: .
+      dockerfile: src/Services/Orders/OrderFlow.Orders.Api/Dockerfile
+    image: orderflow/orders-api:latest
+    container_name: orderflow-orders-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__OrdersDb: "Server=sqlserver,1433;Database=OrderFlow_Orders;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;MultipleActiveResultSets=true"
+      ConnectionStrings__Redis: "redis:6379"
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Username: "${RABBITMQ_USER}"
+      RabbitMQ__Password: "${RABBITMQ_PASSWORD}"
+      JwtSettings__Secret: "${JWT_SECRET}"
+      Serilog__WriteTo__1__Name: "Seq"
+      Serilog__WriteTo__1__Args__serverUrl: "http://seq:80"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - orderflow-net
+
+  notification-worker:
+    build:
+      context: .
+      dockerfile: src/Services/Notifications/OrderFlow.Notifications.Worker/Dockerfile
+    image: orderflow/notification-worker:latest
+    container_name: orderflow-notification-worker
+    restart: unless-stopped
+    environment:
+      DOTNET_ENVIRONMENT: Docker
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Username: "${RABBITMQ_USER}"
+      RabbitMQ__Password: "${RABBITMQ_PASSWORD}"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - orderflow-net
+
+  gateway:
+    build:
+      context: .
+      dockerfile: src/ApiGateway/OrderFlow.Gateway/Dockerfile
+    image: orderflow/gateway:latest
+    container_name: orderflow-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      JwtSettings__Secret: "${JWT_SECRET}"
+      # Sobrescreve clusters para usar DNS interno do compose
+      ReverseProxy__Clusters__identity-cluster__Destinations__identity-1__Address: "http://identity-api:8080/"
+      ReverseProxy__Clusters__catalog-cluster__Destinations__catalog-1__Address: "http://catalog-api:8080/"
+      ReverseProxy__Clusters__orders-cluster__Destinations__orders-1__Address: "http://orders-api:8080/"
+      Serilog__WriteTo__1__Name: "Seq"
+      Serilog__WriteTo__1__Args__serverUrl: "http://seq:80"
+    depends_on:
+      identity-api:
+        condition: service_healthy
+      catalog-api:
+        condition: service_healthy
+      orders-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - orderflow-net
+
+volumes:
+  sqlserver-data:
+  redis-data:
+  rabbitmq-data:
+  seq-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  orderflow-net:
+    driver: bridge
+    name: orderflow-net

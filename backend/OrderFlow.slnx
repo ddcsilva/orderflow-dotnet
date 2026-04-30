@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/" />
+  <Folder Name="/src/ApiGateway/">
+    <Project Path="src/ApiGateway/OrderFlow.Gateway/OrderFlow.Gateway.csproj" />
+  </Folder>
   <Folder Name="/src/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/OrderFlow.SharedKernel/OrderFlow.SharedKernel.csproj" />
     <Project Path="src/BuildingBlocks/OrderFlow.Contracts/OrderFlow.Contracts.csproj" />
@@ -30,5 +33,6 @@
     <Project Path="tests/OrderFlow.Orders.Application.Tests/OrderFlow.Orders.Application.Tests.csproj" />
     <Project Path="tests/OrderFlow.Identity.Api.Tests/OrderFlow.Identity.Api.Tests.csproj" />
     <Project Path="tests/OrderFlow.Notifications.Worker.Tests/OrderFlow.Notifications.Worker.Tests.csproj" />
+    <Project Path="tests/OrderFlow.IntegrationTests/OrderFlow.IntegrationTests.csproj" />
   </Folder>
 </Solution>
