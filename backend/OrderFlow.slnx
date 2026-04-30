@@ -10,7 +10,11 @@
     <Project Path="src/Services/Catalog/OrderFlow.Catalog.Domain/OrderFlow.Catalog.Domain.csproj" />
     <Project Path="src/Services/Catalog/OrderFlow.Catalog.Infrastructure/OrderFlow.Catalog.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Services/Orders/">
+    <Project Path="src/Services/Orders/OrderFlow.Orders.Domain/OrderFlow.Orders.Domain.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OrderFlow.Catalog.Api.Tests/OrderFlow.Catalog.Api.Tests.csproj" />
+    <Project Path="tests/OrderFlow.Orders.Domain.Tests/OrderFlow.Orders.Domain.Tests.csproj" />
   </Folder>
 </Solution>
