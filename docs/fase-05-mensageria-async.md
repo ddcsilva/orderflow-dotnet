@@ -1102,3 +1102,260 @@ Quando usar Kafka ([Fase 13](./fase-13-grpc-kafka-eventsourcing.md)), adote **Co
 > **Próximo passo:** Avance para `fase-06-cache-observabilidade.md`.
 >
 > 🚀 **Trilha Sênior:** [`fase-13-grpc-kafka-eventsourcing.md`](./fase-13-grpc-kafka-eventsourcing.md) — Kafka, Event Sourcing e CDC.
+
+        var publishMock = new Mock<IPublishEndpoint>();
+        var handler = new OrderCreatedDomainEventHandler(
+            publishMock.Object,
+            Mock.Of<ILogger<OrderCreatedDomainEventHandler>>());
+
+        var domainEvent = new OrderCreatedDomainEvent(
+            Guid.NewGuid(), "ORD-20260415-XYZ", Guid.NewGuid(), 250m);
+
+        await handler.Handle(domainEvent, CancellationToken.None);
+
+        publishMock.Verify(p => p.Publish(
+            It.Is<OrderCreated>(e =>
+                e.OrderId == domainEvent.OrderId &&
+                e.OrderNumber == domainEvent.OrderNumber &&
+                e.CustomerId == domainEvent.CustomerId &&
+                e.TotalAmount == domainEvent.TotalAmount),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+}
+```
+
+---
+
+## 7. Notas de Engenharia (Desvios da Implementação)
+
+Esta seção documenta as decisões tomadas durante a implementação que divergem do plano original ou esclarecem detalhes que dependiam do ambiente real.
+
+### 7.1 MassTransit 8.5.9 (não 9.x)
+
+A versão **9.x do MassTransit** passou a exigir licença comercial (Massient). Como o projeto é open-source e didático, foi adotada a **última versão Apache 2.0 da linha 8.x: `8.5.9`** para todos os pacotes:
+
+- `MassTransit` 8.5.9
+- `MassTransit.RabbitMQ` 8.5.9
+- `MassTransit.EntityFrameworkCore` 8.5.9
+
+> Caso futuramente o projeto adquira licença ou a política mude, basta atualizar o bloco "Messaging" em `backend/Directory.Packages.props`.
+
+### 7.2 `MassTransit.Testing` está embutido no core na linha 8.x
+
+Não existe pacote NuGet separado `MassTransit.Testing` para a versão 8.x — os tipos `ITestHarness`, `AddMassTransitTestHarness`, `IConsumerTestHarness<T>` etc. estão dentro de `MassTransit` core. Basta `using MassTransit.Testing;`.
+
+### 7.3 Idempotência InMemory em vez de Redis
+
+O plano original sugeria usar Redis para o `IIdempotencyStore`. Para reduzir dependências nesta fase (Redis só é introduzido na Fase 6 — Cache & Observabilidade), foi implementado:
+
+- **`IIdempotencyStore`** (interface) — abstração estável.
+- **`InMemoryIdempotencyStore`** — `ConcurrentDictionary<string, byte>` com `TryAdd` para deduplicação.
+
+Quando a Fase 6 entrar, basta criar `RedisIdempotencyStore : IIdempotencyStore` e trocar o registro no DI do Worker.
+
+### 7.4 Tabelas do Outbox via `OnModelCreating`
+
+A configuração do MassTransit Transactional Outbox (8.x) usa três extensões em `OrdersDbContext.OnModelCreating`:
+
+```csharp
+modelBuilder.AddInboxStateEntity();
+modelBuilder.AddOutboxMessageEntity();
+modelBuilder.AddOutboxStateEntity();
+```
+
+Junto com `AddEntityFrameworkOutbox<OrdersDbContext>(o => { o.UseSqlServer(); o.UseBusOutbox(); })` no DI. A próxima execução do `dotnet ef migrations add` deve gerar a migration das tabelas `InboxState`, `OutboxMessage` e `OutboxState`.
+
+### 7.5 RabbitMQ no docker-compose
+
+Adicionado o serviço `rabbitmq` com imagem `rabbitmq:3-management-alpine`, expondo `5672` (AMQP) e `15672` (Management UI). Healthcheck via `rabbitmq-diagnostics check_port_connectivity`. Volume nomeado `rabbitmq-data` para persistência. Usuário/senha padrão: `orderflow / orderflow123` (override via vars `RABBITMQ_USER` / `RABBITMQ_PASSWORD`).
+
+### 7.6 Worker Notifications — detalhes finais
+
+- Usa `await host.RunAsync().ConfigureAwait(false);`.
+- Declara `public partial class Program;` no final para permitir testes de integração futuros.
+- Serilog configurado com `formatProvider: CultureInfo.InvariantCulture` para evitar diferenças regionais em logs.
+- `SetKebabCaseEndpointNameFormatter()` antes de `AddConsumers(typeof(Program).Assembly)`.
+- Cada consumer tem um `ConsumerDefinition` próprio definindo `EndpointName = "order-{event}-notifications"`, `ConcurrentMessageLimit = 8` e `UseMessageRetry(r => r.Intervals(1s, 5s, 15s))`. **Apenas** `OrderCreatedConsumerDefinition` adiciona `UseCircuitBreaker` (evento mais crítico/volumoso).
+
+### 7.7 Configuração lida via indexer
+
+Em `OrderFlow.Orders.Infrastructure/DependencyInjection.cs` e em `OrderFlow.Notifications.Worker/Program.cs`, a leitura das configs do RabbitMQ usa `configuration["RabbitMQ:Host"]` (indexer) em vez de `configuration.GetValue<string>(...)` para evitar dependência adicional do pacote `Microsoft.Extensions.Configuration.Binder` — todos os valores são strings simples.
+
+### 7.8 Suppressões CA no Worker
+
+Para manter `TreatWarningsAsErrors=true` sem ruído nos consumers, o `OrderFlow.Notifications.Worker.csproj` suprime: `CA1848` (LoggerMessage source-gen), `CA1873` (avaliação cara em log), `CA2007` (`ConfigureAwait`), `CA1515` (`internal` por padrão), `CA1305` (cultura em formatadores), `CA1812` (classes "não instanciadas" — definitions e consumers são resolvidos via reflexão pelo MassTransit).
+
+### 7.9 `ConfigureAwait(false)` em hot paths
+
+Todos os `await` dentro de consumers, handlers e do `Program.cs` do Worker usam `.ConfigureAwait(false)` (boas práticas para libs/serviços sem `SynchronizationContext`).
+
+### 7.10 Estrutura de testes
+
+Foram adicionados:
+
+- `tests/OrderFlow.Notifications.Worker.Tests/` — 5 testes:
+  - `Consumers/OrderCreatedConsumerTests.cs` — 2 testes com `AddMassTransitTestHarness`, incluindo cenário de **mensagem duplicada** (`MessageId` compartilhado) verificando idempotência.
+  - `Idempotency/InMemoryIdempotencyStoreTests.cs` — 3 testes do `ConcurrentDictionary` store.
+- `tests/OrderFlow.Orders.Application.Tests/EventHandlers/OrderCreatedDomainEventHandlerTests.cs` — 2 testes verificando que o handler de domínio publica o `OrderCreated` integration event com os campos corretos via `IPublishEndpoint`.
+
+### 7.11 Resultado da Fase 5
+
+```
+Build:     0 erros / 0 warnings (TreatWarningsAsErrors=true)
+Testes:    80 aprovados, 0 reprovados
+           ├─ OrderFlow.Orders.Domain.Tests:        44
+           ├─ OrderFlow.Orders.Application.Tests:    7  (+2 nesta fase)
+           ├─ OrderFlow.Catalog.Api.Tests:          17
+           ├─ OrderFlow.Identity.Api.Tests:          7
+           └─ OrderFlow.Notifications.Worker.Tests:  5  (NOVO)
+```
+
+### 7.12 Pendências mapeadas para próximas fases
+
+| Item | Fase alvo |
+|------|-----------|
+| Migration EF Core para tabelas Outbox/Inbox | Próximo commit da Fase 5 |
+| `RedisIdempotencyStore` substituindo o InMemory | Fase 6 |
+| Métricas/health checks do RabbitMQ | Fase 6 |
+| Dead-letter queues explícitas + alertas | Fase 6 |
+| OpenTelemetry tracing através do MassTransit | Fase 6 |
+
+### 7.13 Migration EF Core - bloqueada por política WDAC neste ambiente
+
+Tentativa de gerar a migration:
+
+```powershell
+dotnet ef migrations add AddOutboxAndInitialOrders `
+  --project backend/src/Services/Orders/OrderFlow.Orders.Infrastructure `
+  --startup-project backend/src/Services/Orders/OrderFlow.Orders.Api `
+  --output-dir Persistence/Migrations
+```
+
+Resultado neste ambiente:
+
+```
+System.IO.FileLoadException: Could not load file or assembly
+'...OrderFlow.Orders.Api.dll'.
+Uma política de Controle de Aplicativo bloqueou este arquivo. (0x800711C7)
+```
+
+A causa é o **Windows Defender Application Control (WDAC)** bloqueando o carregamento por reflexão de DLLs em `bin\Debug` dentro do diretório de usuário. Build e testes funcionam normalmente — o bloqueio só ocorre no host do `dotnet ef`.
+
+**Workarounds possíveis:**
+
+1. Executar `dotnet ef migrations add` dentro de um container Linux (`mcr.microsoft.com/dotnet/sdk:10.0`) montando o repo como volume.
+2. Mover o repositório para um diretório incluído na allowlist do WDAC.
+3. Solicitar ao administrador uma exceção pontual para `bin\Debug\*.dll` em pastas de desenvolvimento.
+
+A migration deve ser gerada antes da primeira execução real contra SQL Server e antes do primeiro `docker-compose up` que inclua o Worker em produção.
+
+### 7.14 Validação end-to-end (RabbitMQ + SQL Server + Worker)
+
+Após corrigir 3 bugs descobertos durante a validação real:
+
+1. **Healthcheck do SQL Server no docker-compose** — usava `$$SA_PASSWORD` mas a env var é `MSSQL_SA_PASSWORD`. Corrigido para `$$MSSQL_SA_PASSWORD`. Sem isso, o SQL ficava perpetuamente `unhealthy`.
+2. **Senhas divergentes** — `OrderFlow.Orders.Api/appsettings.json` e `OrderFlow.Identity.Api/appsettings.json` usavam `YourStr0ng!Pass`; alinhado para `OrderFlow@2026!` (mesma do compose e do Catalog).
+3. **Seq exigia config de auth** — adicionado `SEQ_FIRSTRUN_NOAUTHENTICATION: "true"` (válido apenas em dev).
+4. **`EnableRetryOnFailure(3)` incompatível com transações + Outbox** — `SqlServerRetryingExecutionStrategy` recusa `BeginTransaction` iniciada pelo `TransactionBehavior` do MediatR e pelo Outbox. Removido (com comentário) em `OrderFlow.Orders.Infrastructure/DependencyInjection.cs`. Resiliência transitória SQL fica para Fase 9 (Polly).
+
+Migration EF gerada e aplicada (após corrigir bug do WDAC com containers reiniciados):
+
+```
+dotnet ef migrations add AddOutboxAndInitialOrders \
+  --project ...\OrderFlow.Orders.Infrastructure \
+  --startup-project ...\OrderFlow.Orders.Api \
+  --output-dir Persistence/Migrations
+dotnet ef database update --project ... --startup-project ...
+```
+
+Arquivos gerados:
+
+- `Persistence/Migrations/20260430214543_AddOutboxAndInitialOrders.cs`
+- `Persistence/Migrations/OrdersDbContextModelSnapshot.cs`
+
+Tabelas criadas em `OrderFlow_Orders`: `Orders`, `OrderItems`, `InboxState`, `OutboxMessage`, `OutboxState`, `__EFMigrationsHistory`.
+
+> Suprimido `CA1861` no csproj da Infrastructure (arrays constantes em código autogerado por migration).
+
+**Teste E2E executado com sucesso:**
+
+1. `POST /api/orders` retorna `201` com GUID do pedido criado.
+2. Logs da API: `Begin transaction → Domain Event publicado → Outbox Sent → Outbox Delivered → Transaction committed → 201 (404ms)`.
+3. RabbitMQ: exchange `OrderFlow.Contracts.IntegrationEvents:OrderCreated` publicada, fila `order-created-notifications` consumida.
+4. Logs do Worker: `Processing OrderCreated: OrderId=... → Notification sent for new order ORD-...`.
+5. SQL `OutboxMessage` retorna 0 linhas (entregue + limpeza automática do MassTransit Bus Outbox).
+
+**Topologia RabbitMQ confirmada:**
+
+| Exchange | Tipo | Função |
+|---|---|---|
+| `OrderFlow.Contracts.IntegrationEvents:OrderCreated` | fanout | Publisher |
+| `OrderFlow.Contracts.IntegrationEvents:OrderConfirmed` | fanout | Publisher |
+| `OrderFlow.Contracts.IntegrationEvents:OrderCancelled` | fanout | Publisher |
+| `order-created-notifications` | fanout | Consumer endpoint (1 consumer ativo) |
+| `order-confirmed-notifications` | fanout | Consumer endpoint (1 consumer ativo) |
+| `order-cancelled-notifications` | fanout | Consumer endpoint (1 consumer ativo) |
+
+### 7.15 Delta completo de arquivos (paridade código <-> documento)
+
+Esta seção lista TUDO que foi modificado/criado nesta fase, garantindo paridade exata entre o repositório e este documento.
+
+#### Projetos novos (3)
+
+- `backend/src/BuildingBlocks/OrderFlow.Contracts/`
+  - `OrderFlow.Contracts.csproj` (NoWarn=CA1716)
+  - `IntegrationEvents/OrderCreated.cs`
+  - `IntegrationEvents/OrderConfirmed.cs`
+  - `IntegrationEvents/OrderCancelled.cs`
+- `backend/src/Services/Notifications/OrderFlow.Notifications.Worker/`
+  - `OrderFlow.Notifications.Worker.csproj`
+  - `Program.cs`
+  - `Consumers/OrderCreatedConsumer.cs` + `OrderCreatedConsumerDefinition.cs`
+  - `Consumers/OrderConfirmedConsumer.cs` + `OrderConfirmedConsumerDefinition.cs`
+  - `Consumers/OrderCancelledConsumer.cs` + `OrderCancelledConsumerDefinition.cs`
+  - `Idempotency/IIdempotencyStore.cs` + `InMemoryIdempotencyStore`
+  - `appsettings.json` + `appsettings.Development.json`
+- `backend/tests/OrderFlow.Notifications.Worker.Tests/`
+  - `OrderFlow.Notifications.Worker.Tests.csproj`
+  - `Consumers/OrderCreatedConsumerTests.cs`
+  - `Idempotency/InMemoryIdempotencyStoreTests.cs`
+
+#### Arquivos modificados (12)
+
+| Arquivo | Mudança |
+|---|---|
+| `backend/Directory.Packages.props` | Adicionada seção "Messaging": MassTransit 8.5.9, MassTransit.RabbitMQ 8.5.9, MassTransit.EntityFrameworkCore 8.5.9; adicionado `Microsoft.Extensions.Hosting 10.0.6` |
+| `backend/OrderFlow.slnx` | Adicionados projetos `OrderFlow.Contracts`, `OrderFlow.Notifications.Worker` e `OrderFlow.Notifications.Worker.Tests` |
+| `backend/docker/docker-compose.yml` | Novo serviço `rabbitmq`; volume `rabbitmq-data`; correção do healthcheck SQL (`$$MSSQL_SA_PASSWORD`); `SEQ_FIRSTRUN_NOAUTHENTICATION=true` |
+| `backend/src/Services/Identity/OrderFlow.Identity.Api/appsettings.json` | Senha SQL alinhada para `OrderFlow@2026!` |
+| `backend/src/Services/Orders/OrderFlow.Orders.Api/appsettings.json` | Senha SQL alinhada + nova seção `RabbitMQ` (Host/VirtualHost/Username/Password) |
+| `backend/src/Services/Orders/OrderFlow.Orders.Application/OrderFlow.Orders.Application.csproj` | Refs Contracts + pacote MassTransit |
+| `backend/src/Services/Orders/OrderFlow.Orders.Application/Orders/EventHandlers/OrderCreatedDomainEventHandler.cs` | Reescrito: injeta `IPublishEndpoint` e publica `OrderCreated` |
+| `backend/src/Services/Orders/OrderFlow.Orders.Application/Orders/EventHandlers/OrderConfirmedDomainEventHandler.cs` | **NOVO** — publica `OrderConfirmed` |
+| `backend/src/Services/Orders/OrderFlow.Orders.Application/Orders/EventHandlers/OrderCancelledDomainEventHandler.cs` | **NOVO** — publica `OrderCancelled` |
+| `backend/src/Services/Orders/OrderFlow.Orders.Infrastructure/OrderFlow.Orders.Infrastructure.csproj` | Refs Contracts + pacotes MassTransit / MassTransit.RabbitMQ / MassTransit.EntityFrameworkCore; `NoWarn` agora inclui `CA1861` (migrations) |
+| `backend/src/Services/Orders/OrderFlow.Orders.Infrastructure/DependencyInjection.cs` | Bloco completo `AddMassTransit` com `AddEntityFrameworkOutbox<OrdersDbContext>(o => { o.UseSqlServer(); o.UseBusOutbox(); })`, host RabbitMQ via indexer, `ConfigureEndpoints` callback. **Removido `EnableRetryOnFailure(3)`** (incompatível com transações + Outbox) |
+| `backend/src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/OrdersDbContext.cs` | `using MassTransit;` + `AddInboxStateEntity()`, `AddOutboxMessageEntity()`, `AddOutboxStateEntity()` em `OnModelCreating` |
+| `backend/tests/OrderFlow.Orders.Application.Tests/OrderFlow.Orders.Application.Tests.csproj` | Adicionado `<PackageReference Include="MassTransit" />` |
+| `backend/tests/OrderFlow.Orders.Application.Tests/EventHandlers/OrderCreatedDomainEventHandlerTests.cs` | **NOVO** — 2 testes verificando publicação via `IPublishEndpoint` mockado |
+
+#### Migrations EF Core geradas
+
+- `backend/src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/Migrations/20260430214543_AddOutboxAndInitialOrders.cs`
+- `backend/src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/Migrations/20260430214543_AddOutboxAndInitialOrders.Designer.cs`
+- `backend/src/Services/Orders/OrderFlow.Orders.Infrastructure/Persistence/Migrations/OrdersDbContextModelSnapshot.cs`
+
+#### Avisos informativos observados em runtime (não-bloqueantes)
+
+- **`Lucky Penny / MediatR license warning`** — MediatR 12+ exibe aviso em dev; ok para desenvolvimento. Decisão futura: avaliar migração para `Mediator` (source-gen, MIT) ou pagar licença. Não é problema desta fase.
+- **`Savepoints disabled because Multiple Active Result Sets (MARS) is enabled`** — a connection string `OrdersDb` tem `MultipleActiveResultSets=true`, o que desabilita savepoints automáticos do EF. O `TransactionBehavior` faz rollback explícito, então é seguro. Para silenciar: remover `MultipleActiveResultSets=true` (não é necessário no fluxo atual) ou configurar `ConfigureWarnings(w => w.Ignore(SqlServerEventId.SavepointsDisabledBecauseOfMARS))`. **TODO Fase 6** ao revisar resiliência/observabilidade.
+
+#### Resumo final
+
+```
+Build:               0 erros / 0 warnings
+Testes:              80 aprovados / 0 reprovados
+Containers up:       sqlserver (healthy) + rabbitmq (healthy) + seq (running)
+Migration aplicada:  20260430214543_AddOutboxAndInitialOrders
+E2E validado:        POST /api/orders → DB + Outbox → RabbitMQ → Worker consumido
+```

@@ -1,8 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
+using HealthChecks.UI.Client;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using OrderFlow.Catalog.Api.Middleware;
 using OrderFlow.Catalog.Infrastructure;
 using OrderFlow.Catalog.Infrastructure.Data;
+using OrderFlow.SharedKernel.Observability;
 using Serilog;
 
 namespace OrderFlow.Catalog.Api.Extensions;
@@ -13,19 +16,7 @@ internal static class HostingExtensions
         Justification = "Serilog gerencia formatação de strings internamente — falso positivo")]
     internal static WebApplicationBuilder AddSerilog(this WebApplicationBuilder builder)
     {
-        builder.Services.AddSerilog((services, loggerConfig) =>
-        {
-            loggerConfig
-                .ReadFrom.Configuration(builder.Configuration)
-                .ReadFrom.Services(services)
-                .Enrich.FromLogContext()
-                .Enrich.WithEnvironmentName()
-                .Enrich.WithThreadId()
-                .WriteTo.Console(
-                    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
-                .WriteTo.Seq(builder.Configuration["Seq:Url"] ?? "http://localhost:5341");
-        });
-
+        builder.AddOrderFlowSerilog();
         return builder;
     }
 
@@ -46,11 +37,37 @@ internal static class HostingExtensions
         builder.Services.AddCatalogInfrastructure(builder.Configuration);
         builder.Services.AddTransient<GlobalExceptionHandler>();
 
+        // Redis Distributed Cache
+        var redisConnectionString = builder.Configuration.GetConnectionString("Redis")
+            ?? builder.Configuration["Redis:ConnectionString"]
+            ?? "localhost:6379";
+
+        builder.Services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnectionString;
+            options.InstanceName = "OrderFlow.Catalog:";
+        });
+
+        // OpenTelemetry
+        builder.Services.AddOrderFlowOpenTelemetry(builder.Configuration, "OrderFlow.Catalog.Api");
+
+        // Output Caching
+        builder.Services.AddOutputCache(options =>
+        {
+            options.AddPolicy("Products", policy => policy
+                .Expire(TimeSpan.FromMinutes(5))
+                .Tag("products"));
+        });
+
         builder.Services.AddHealthChecks()
             .AddSqlServer(
                 builder.Configuration.GetConnectionString("CatalogDb")!,
                 name: "sqlserver",
-                tags: ["db", "ready"]);
+                tags: ["db", "ready", "startup"])
+            .AddRedis(
+                redisConnectionString,
+                name: "redis",
+                tags: ["cache", "ready"]);
 
         return builder;
     }
@@ -64,18 +81,29 @@ internal static class HostingExtensions
         }
 
         app.UseMiddleware<GlobalExceptionHandler>();
+        app.UseCorrelationId();
         app.UseSerilogRequestLogging();
+        app.UseOutputCache();
 
         app.MapControllers();
+        app.MapPrometheusScrapingEndpoint();
 
-        app.MapHealthChecks("/health/ready", new()
+        app.MapHealthChecks("/health/live", new HealthCheckOptions
         {
-            Predicate = check => check.Tags.Contains("ready")
+            Predicate = _ => false,
+            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
         });
 
-        app.MapHealthChecks("/health/live", new()
+        app.MapHealthChecks("/health/ready", new HealthCheckOptions
         {
-            Predicate = _ => false
+            Predicate = check => check.Tags.Contains("ready"),
+            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+        });
+
+        app.MapHealthChecks("/health/startup", new HealthCheckOptions
+        {
+            Predicate = check => check.Tags.Contains("startup"),
+            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
         });
 
         return app;

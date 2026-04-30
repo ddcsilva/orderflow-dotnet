@@ -1,4 +1,5 @@
 using System.Data;
+using MassTransit;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -25,7 +26,9 @@ public static class DependencyInjection
             options.UseSqlServer(connectionString, sql =>
             {
                 sql.MigrationsAssembly(typeof(OrdersDbContext).Assembly.FullName);
-                sql.EnableRetryOnFailure(3);
+                // NOTE: EnableRetryOnFailure desabilitado porque é incompatível
+                // com transações iniciadas pelo TransactionBehavior + Outbox do MassTransit.
+                // O Outbox já garante entrega confiável; resiliência de SQL transitório virá na Fase 9 (Polly).
             }));
 
         services.AddScoped<IDbConnection>(_ => new SqlConnection(connectionString));
@@ -36,6 +39,37 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddScoped<DbContext>(sp => sp.GetRequiredService<OrdersDbContext>());
+
+        // MassTransit + RabbitMQ + EF Core Transactional Outbox
+        services.AddMassTransit(cfg =>
+        {
+            cfg.AddEntityFrameworkOutbox<OrdersDbContext>(o =>
+            {
+                o.UseSqlServer();
+                o.UseBusOutbox();
+            });
+
+            cfg.AddConfigureEndpointsCallback((context, _, endpointCfg) =>
+            {
+                endpointCfg.UseEntityFrameworkOutbox<OrdersDbContext>(context);
+            });
+
+            cfg.UsingRabbitMq((context, rabbitCfg) =>
+            {
+                var host = configuration["RabbitMQ:Host"] ?? "localhost";
+                var username = configuration["RabbitMQ:Username"] ?? "orderflow";
+                var password = configuration["RabbitMQ:Password"] ?? "orderflow123";
+                var virtualHost = configuration["RabbitMQ:VirtualHost"] ?? "/";
+
+                rabbitCfg.Host(host, virtualHost, h =>
+                {
+                    h.Username(username);
+                    h.Password(password);
+                });
+
+                rabbitCfg.ConfigureEndpoints(context);
+            });
+        });
 
         return services;
     }

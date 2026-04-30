@@ -1,3 +1,4 @@
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
 
@@ -13,5 +14,10 @@ public sealed class OrdersDbContext(DbContextOptions<OrdersDbContext> options)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(OrdersDbContext).Assembly);
+
+        // MassTransit Transactional Outbox tables (Inbox/Outbox state + OutboxMessage)
+        modelBuilder.AddInboxStateEntity();
+        modelBuilder.AddOutboxMessageEntity();
+        modelBuilder.AddOutboxStateEntity();
     }
 }

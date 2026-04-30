@@ -3,7 +3,9 @@ using System.Text;
 using System.Threading.RateLimiting;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -12,13 +14,12 @@ using OrderFlow.Identity.Api.Data;
 using OrderFlow.Identity.Api.Models;
 using OrderFlow.Identity.Api.Services;
 using OrderFlow.SharedKernel.Auth;
+using OrderFlow.SharedKernel.Observability;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, cfg) => cfg
-    .ReadFrom.Configuration(ctx.Configuration)
-    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture));
+builder.AddOrderFlowSerilog();
 
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection(JwtSettings.SectionName));
@@ -121,8 +122,14 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddProblemDetails();
 
+builder.Services.AddOrderFlowOpenTelemetry(builder.Configuration, "OrderFlow.Identity.Api");
+
+builder.Services.AddHealthChecks()
+    .AddSqlServer(connectionString, name: "sqlserver", tags: ["db", "ready", "startup"]);
+
 var app = builder.Build();
 
+app.UseCorrelationId();
 app.UseSerilogRequestLogging();
 app.UseCors("AllowFrontend");
 app.UseRateLimiter();
@@ -138,6 +145,19 @@ app.UseAuthorization();
 
 app.MapControllers()
     .RequireRateLimiting("general");
+app.MapPrometheusScrapingEndpoint();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
 
 using (var scope = app.Services.CreateScope())
 {

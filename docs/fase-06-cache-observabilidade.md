@@ -1047,6 +1047,131 @@ Grafana mostra distribuição de tickets por tier.
 
 ---
 
+## 8. Notas de Engenharia (Desvios da Implementação Real)
+
+> Esta seção documenta como a implementação real diverge dos exemplos didáticos acima, mantendo o documento como espelho fiel do código no repositório.
+
+### 8.1 Assinatura real de `IProductService.SearchAsync`
+
+O exemplo da seção 5.3 mostra `SearchAsync(string?, int, int)`. A interface real em [`IProductService.cs`](../backend/src/Services/Catalog/OrderFlow.Catalog.Application/Interfaces/IProductService.cs) usa um `record` agregando os filtros:
+
+```csharp
+Task<PagedResult<ProductDto>> SearchAsync(ProductSearchRequest request, CancellationToken ct = default);
+
+public sealed record ProductSearchRequest(
+    string? SearchTerm = null,
+    Guid? CategoryId = null,
+    decimal? MinPrice = null,
+    decimal? MaxPrice = null,
+    int Page = 1,
+    int PageSize = 20);
+```
+
+O `CachedProductService` adapta-se a essa assinatura calculando um hash SHA-256 da request inteira como sufixo da chave de cache.
+
+### 8.2 Catalog é Service-Based — Decorator escolhido sobre PipelineBehavior
+
+O serviço `Catalog` **não usa MediatR** (vide ADR da Fase 03). Controllers injetam `IProductService` diretamente. Por isso o cache foi adicionado via **Decorator pattern** (não via `IPipelineBehavior`) — alinhamento arquitetural com o restante do bounded context.
+
+Registro real em [`DependencyInjection.cs`](../backend/src/Services/Catalog/OrderFlow.Catalog.Infrastructure/DependencyInjection.cs):
+
+```csharp
+services.AddScoped<ProductService>();
+services.AddScoped<IProductService>(sp => new CachedProductService(
+    sp.GetRequiredService<ProductService>(),
+    sp.GetRequiredService<IDistributedCache>(),
+    sp.GetRequiredService<ILogger<CachedProductService>>()));
+```
+
+### 8.3 Invalidação de busca via chave versionada
+
+`IDistributedCache` **não suporta delete por padrão (`KEYS pattern`)**. Em vez de varrer Redis manualmente, todas as chaves de busca recebem um sufixo `:{version}` lido de `products:search:version`. Cada `Create/Update/Delete` apenas grava um novo `version` (timestamp UNIX em ms) — chaves antigas ficam órfãs até o TTL expirar (2 min para search, 5 min para itens individuais). É O(1), seguro entre instâncias e evita `KEYS` (operação bloqueante).
+
+### 8.4 OpenTelemetry centralizado em `OrderFlow.SharedKernel`
+
+Para evitar repetição, criou-se [`OpenTelemetryExtensions.AddOrderFlowOpenTelemetry`](../backend/src/BuildingBlocks/OrderFlow.SharedKernel/Observability/OpenTelemetryExtensions.cs) que registra:
+
+- Tracing: AspNetCore + HttpClient + SqlClient + sources `OrderFlow` e `MassTransit`, com filtro que ignora `/health` e `/metrics`
+- Metrics: AspNetCore + HttpClient + meter `OrderFlow` + Prometheus exporter (`/metrics`)
+- OTLP exporter ativado quando `OpenTelemetry:OtlpEndpoint` está preenchido nos appsettings
+
+A propriedade `SetDbStatementForText` foi removida nas versões 1.15.x do `OpenTelemetry.Instrumentation.SqlClient`. A implementação atual mantém apenas `RecordException = true`.
+
+### 8.5 Versões dos pacotes (treat-warnings-as-errors)
+
+`Directory.Build.props` define `TreatWarningsAsErrors=true`, e `NU1902` (vulnerability advisory) também é tratado como erro. Por isso usamos as versões mais recentes (1.15.x) do OpenTelemetry, fixadas em [`Directory.Packages.props`](../backend/Directory.Packages.props):
+
+| Pacote | Versão |
+|--------|--------|
+| `OpenTelemetry.*` (estáveis) | 1.15.x |
+| `OpenTelemetry.Instrumentation.SqlClient` | 1.15.2 |
+| `OpenTelemetry.Instrumentation.EntityFrameworkCore` | 1.15.1-beta.1 |
+| `OpenTelemetry.Exporter.Prometheus.AspNetCore` | 1.15.3-beta.1 |
+| `Microsoft.Extensions.Caching.StackExchangeRedis` | 10.0.6 |
+| `Serilog.Enrichers.Span` | 3.1.0 |
+| `AspNetCore.HealthChecks.SqlServer/Redis/UI.Client` | 9.0.0 |
+
+### 8.6 Health Checks: três endpoints separados
+
+Implementação real:
+
+| Endpoint | Predicate | Uso |
+|----------|-----------|-----|
+| `/health/live` | `_ => false` (sempre 200) | Liveness do orquestrador |
+| `/health/ready` | tag `ready` | Readiness do load balancer (SQL + Redis) |
+| `/health/startup` | tag `startup` | Startup probe — apenas SQL |
+
+Todos retornam JSON via `UIResponseWriter.WriteHealthCheckUIResponse`.
+
+### 8.7 RabbitMQ Health Check — temporariamente removido
+
+O pacote `AspNetCore.HealthChecks.Rabbitmq` 9.0 mudou a assinatura de `AddRabbitMQ` para exigir `Func<IServiceProvider, IConnection>` (consumindo um `IConnection` registrado no DI). Como o `MassTransit` não expõe diretamente o `IConnection` AMQP em uma forma simples, o health check do RabbitMQ foi **omitido** nesta fase. Será reintroduzido na Fase 09 (Resiliência) quando registrarmos um `IConnectionFactory` compartilhado.
+
+### 8.8 Serilog: `WithSpan()` veio de `Serilog.Enrichers.Span`
+
+O exemplo didático usa `.Enrich.WithSpan()` mas esse método é fornecido pelo pacote separado `Serilog.Enrichers.Span` (não por `Serilog.AspNetCore`). A implementação real registra-o como `Enrich.With<ActivityEnricher>()` em [`SerilogExtensions.cs`](../backend/src/BuildingBlocks/OrderFlow.SharedKernel/Observability/SerilogExtensions.cs), o que produz as propriedades `TraceId` e `SpanId` em todos os eventos.
+
+### 8.9 LoggerMessage source-generators (CA1848/CA1873)
+
+A regra `CA1848` exige delegados `LoggerMessage` em código de produção. `CachedProductService` é declarado `partial` e usa `[LoggerMessage]` para os três logs de cache (HIT, MISS, FAILURE). Padrão recomendado para qualquer logger em hot-path.
+
+### 8.10 Testes — total atualizado
+
+Após a Fase 6, a suíte tem **84 testes passando** (anteriormente 80):
+
+| Projeto | Testes | Cobre |
+|---------|--------|-------|
+| OrderFlow.Orders.Domain.Tests | 44 | Entities, Value Objects, Events |
+| OrderFlow.Orders.Application.Tests | 7 | Handlers MediatR |
+| OrderFlow.Identity.Api.Tests | 7 | Auth fluxo end-to-end |
+| OrderFlow.Notifications.Worker.Tests | 5 | Consumers MassTransit |
+| OrderFlow.Catalog.Api.Tests | 17 | Controllers + WebApplicationFactory |
+| **OrderFlow.Catalog.Infrastructure.Tests** | **4** | **CachedProductService (cache HIT/MISS, invalidação)** |
+
+### 8.11 Docker Compose — `prometheus.yml` no diretório `docker/`
+
+Por simplicidade, o `prometheus.yml` foi colocado em [`backend/docker/prometheus.yml`](../backend/docker/prometheus.yml) (não em `infra/prometheus/`). Os volumes nomeados seguem o padrão do compose v2: `redis-data`, `prometheus-data`, `grafana-data`. Os targets do Prometheus apontam para `host.docker.internal:5000/5001/5002` (acessível em Docker Desktop via `extra_hosts: ["host.docker.internal:host-gateway"]`).
+
+### 8.12 Smoke test pós-implementação
+
+```powershell
+# Subir stack
+docker compose -f backend\docker\docker-compose.yml up -d redis prometheus grafana
+
+# Cache HIT/MISS
+curl http://localhost:5002/api/products/{id}   # MISS — log: "Cache MISS product:id:{id}"
+curl http://localhost:5002/api/products/{id}   # HIT  — log: "Cache HIT product:id:{id}"
+
+# Health checks
+curl http://localhost:5002/health/live    # 200
+curl http://localhost:5002/health/ready   # 200 (sqlserver+redis UP)
+
+# Prometheus scrape endpoint
+curl http://localhost:5002/metrics
+```
+
+---
+
 > **Próximo passo:** Avance para `fase-07-gateway-docker.md`.
 >
 > 🚀 **Trilha Sênior:** [`fase-14-feature-flags-sre.md`](./fase-14-feature-flags-sre.md) — SLO/SLI, RED/USE, Error Budget.

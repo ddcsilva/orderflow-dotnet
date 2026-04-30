@@ -2,6 +2,7 @@
   <Folder Name="/src/" />
   <Folder Name="/src/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/OrderFlow.SharedKernel/OrderFlow.SharedKernel.csproj" />
+    <Project Path="src/BuildingBlocks/OrderFlow.Contracts/OrderFlow.Contracts.csproj" />
   </Folder>
   <Folder Name="/src/Services/" />
   <Folder Name="/src/Services/Catalog/">
@@ -19,10 +20,15 @@
   <Folder Name="/src/Services/Identity/">
     <Project Path="src/Services/Identity/OrderFlow.Identity.Api/OrderFlow.Identity.Api.csproj" />
   </Folder>
+  <Folder Name="/src/Services/Notifications/">
+    <Project Path="src/Services/Notifications/OrderFlow.Notifications.Worker/OrderFlow.Notifications.Worker.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OrderFlow.Catalog.Api.Tests/OrderFlow.Catalog.Api.Tests.csproj" />
+    <Project Path="tests/OrderFlow.Catalog.Infrastructure.Tests/OrderFlow.Catalog.Infrastructure.Tests.csproj" />
     <Project Path="tests/OrderFlow.Orders.Domain.Tests/OrderFlow.Orders.Domain.Tests.csproj" />
     <Project Path="tests/OrderFlow.Orders.Application.Tests/OrderFlow.Orders.Application.Tests.csproj" />
     <Project Path="tests/OrderFlow.Identity.Api.Tests/OrderFlow.Identity.Api.Tests.csproj" />
+    <Project Path="tests/OrderFlow.Notifications.Worker.Tests/OrderFlow.Notifications.Worker.Tests.csproj" />
   </Folder>
 </Solution>

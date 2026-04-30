@@ -1,18 +1,19 @@
 using System.Globalization;
 using System.Text;
 using FluentValidation;
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using OrderFlow.Orders.Application;
 using OrderFlow.Orders.Infrastructure;
 using OrderFlow.SharedKernel.Auth;
+using OrderFlow.SharedKernel.Observability;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, cfg) => cfg
-    .ReadFrom.Configuration(ctx.Configuration)
-    .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture));
+builder.AddOrderFlowSerilog();
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -46,9 +47,44 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddProblemDetails();
 
+// Redis distributed cache
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis")
+    ?? "localhost:6379";
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisConnectionString;
+    options.InstanceName = "OrderFlow.Orders:";
+});
+
+// Output caching
+builder.Services.AddOutputCache(options =>
+{
+    options.AddPolicy("Orders", policy => policy
+        .Expire(TimeSpan.FromMinutes(2))
+        .Tag("orders"));
+});
+
+// OpenTelemetry
+builder.Services.AddOrderFlowOpenTelemetry(builder.Configuration, "OrderFlow.Orders.Api");
+
+// Health Checks
+builder.Services.AddHealthChecks()
+    .AddSqlServer(
+        builder.Configuration.GetConnectionString("OrdersDb")!,
+        name: "sqlserver",
+        tags: ["db", "ready", "startup"])
+    .AddRedis(
+        redisConnectionString,
+        name: "redis",
+        tags: ["cache", "ready"]);
+// NOTA: HealthChecks.Rabbitmq 9.x requer registro de IConnection — simplificado por ora.
+// Reintroduzir após registrar IConnectionFactory de forma compartilhada.
+
 var app = builder.Build();
 
+app.UseCorrelationId();
 app.UseSerilogRequestLogging();
+app.UseOutputCache();
 
 if (app.Environment.IsDevelopment())
 {
@@ -85,6 +121,25 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapPrometheusScrapingEndpoint();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+app.MapHealthChecks("/health/startup", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("startup"),
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
 
 await app.RunAsync();
 

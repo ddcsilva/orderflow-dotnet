@@ -1,10 +1,13 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OrderFlow.Catalog.Application.Interfaces;
 using OrderFlow.Catalog.Application.Services;
 using OrderFlow.Catalog.Domain.Interfaces;
+using OrderFlow.Catalog.Infrastructure.Caching;
 using OrderFlow.Catalog.Infrastructure.Data;
 using OrderFlow.Catalog.Infrastructure.Data.Repositories;
 using OrderFlow.SharedKernel;
@@ -37,8 +40,12 @@ public static class DependencyInjection
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
 
-        // Serviços
-        services.AddScoped<IProductService, ProductService>();
+        // Serviços (com Decorator de Cache para IProductService)
+        services.AddScoped<ProductService>();
+        services.AddScoped<IProductService>(sp => new CachedProductService(
+            sp.GetRequiredService<ProductService>(),
+            sp.GetRequiredService<IDistributedCache>(),
+            sp.GetRequiredService<ILogger<CachedProductService>>()));
         services.AddScoped<ICategoryService, CategoryService>();
 
         // Validadores
