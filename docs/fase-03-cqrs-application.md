@@ -304,6 +304,16 @@ dotnet add tests/OrderFlow.Orders.Application.Tests package Moq
 
 ## 5. Código de Referência Completo
 
+> **🛠 Notas de Engenharia (deviações aplicadas no código real)**
+>
+> 1. **`IRepository<T>` define `Remove(T)`** (não `Delete(T)`) — a `OrderRepository` implementa `Remove(Order)` para honrar o contrato do SharedKernel (Fase 1). Ela também implementa `GetAllAsync(CancellationToken)` herdado de `IRepository<Order>`.
+> 2. **Suppressões de analisadores em `OrderFlow.Orders.Application.csproj`:** `<NoWarn>$(NoWarn);CA1716;CA1711;CA1000;CA1725;CA1848;CA1873</NoWarn>` — necessárias porque o estilo idiomático do MediatR/Result Pattern colide com regras como _"não nomeie tipo Error"_ (CA1716), _"handlers que terminam em EventHandler"_ (CA1711), _"static em Result&lt;T&gt;"_ (CA1000), _"parâmetro `ct` deve se chamar `cancellationToken`"_ (CA1725) e exigência de `LoggerMessage`-source-generators (CA1848/CA1873).
+> 3. **`OrderFlow.Orders.Infrastructure.csproj`** suprime `CA1725;CA1848;CA1873` pelo mesmo motivo.
+> 4. **`OrderFlow.Orders.Api.csproj`** suprime `CA1848;CA1873;CA1515` (controller público, logging extensions).
+> 5. **`MediatR 13.x`:** a assinatura `RequestHandlerDelegate<TResponse>` aceita `CancellationToken` como parâmetro — daí o uso de `next(ct)` em todos os behaviors. Em MediatR 12.x a assinatura é `next()` sem parâmetros.
+> 6. **`SharedKernel` agora referencia `MediatR`** porque `IDomainEvent : INotification` (acoplamento documentado e pragmático).
+> 7. **`ICurrentUserService`** já é declarado nesta fase em `Common/Interfaces/` (será implementado na Fase 4).
+
 ### 5.1 Result Pattern
 
 **`src/Services/Orders/OrderFlow.Orders.Application/Common/Error.cs`**
@@ -1190,9 +1200,16 @@ public sealed class OrderRepository(OrdersDbContext dbContext) : IOrderRepositor
         dbContext.Orders.Update(entity);
     }
 
-    public void Delete(Order entity)
+    public void Remove(Order entity)
     {
         dbContext.Orders.Remove(entity);
+    }
+
+    public async Task<IReadOnlyList<Order>> GetAllAsync(CancellationToken ct = default)
+    {
+        return await dbContext.Orders
+            .Include(o => o.Items)
+            .ToListAsync(ct);
     }
 
     public async Task<Order?> GetByOrderNumberAsync(string orderNumber, CancellationToken ct = default)
@@ -1566,6 +1583,10 @@ app.Run();
 // Para testes de integração
 public partial class Program;
 ```
+
+> **Nota de implementação (CA1305):** O analisador `CA1305` exige `IFormatProvider` em `WriteTo.Console(...)`. Use `formatProvider: System.Globalization.CultureInfo.InvariantCulture` (e `using System.Globalization;` no topo). Quando `Seq` ainda não estiver provisionado nesta fase, omita `WriteTo.Seq(...)`.
+>
+> **Nota de implementação (RunAsync):** O analisador `CA2007`/padrões modernos preferem `await app.RunAsync();` em vez de `app.Run();` no topo do `Program.cs`.
 
 **`src/Services/Orders/OrderFlow.Orders.Api/appsettings.json`**
 

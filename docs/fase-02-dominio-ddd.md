@@ -539,6 +539,31 @@ public sealed class OrderDomainException : Exception
 >
 > Note como cada throw inclui mensagem descritiva + código: `throw new OrderDomainException("Cannot confirm an order with no items.", "EMPTY_ORDER")`. Na Fase 03, o middleware converte isso em HTTP 400 com corpo estruturado.
 
+**`src/Services/Orders/OrderFlow.Orders.Domain/Exceptions/InsufficientStockException.cs`**
+
+```csharp
+namespace OrderFlow.Orders.Domain.Exceptions;
+
+public sealed class InsufficientStockException : Exception
+{
+    public static string Code => "INSUFFICIENT_STOCK";
+    public Guid ProductId { get; }
+    public int Requested { get; }
+    public int Available { get; }
+
+    public InsufficientStockException(Guid productId, int requested, int available)
+        : base($"Insufficient stock for product '{productId}'. Requested: {requested}, Available: {available}.")
+    {
+        ProductId = productId;
+        Requested = requested;
+        Available = available;
+    }
+}
+```
+
+> 🔍 **Nota de Engenharia — Por que herda de `Exception` (e não de `OrderDomainException`)?**
+> `OrderDomainException` é `sealed` (não pode ser herdada — decisão de Exception Design). Então criamos `InsufficientStockException` derivando diretamente de `Exception`. O `Code` é `static` (não acessa estado da instância — `CA1822` do analyzer obriga). A exceção carrega contexto rico (`ProductId`, `Requested`, `Available`) para o middleware da Fase 3 transformar em ProblemDetails estruturado.
+
 ### 5.3 Value Objects
 
 **`src/Services/Orders/OrderFlow.Orders.Domain/ValueObjects/Money.cs`**
@@ -748,7 +773,7 @@ public sealed class OrderNumber : ValueObject
     public static OrderNumber Create()
     {
         // Formato: ORD-YYYYMMDD-XXXXX (ex: ORD-20260415-A3F8B)
-        var datePart = DateTime.UtcNow.ToString("yyyyMMdd");
+        var datePart = DateTime.UtcNow.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
         var randomPart = Guid.NewGuid().ToString("N")[..5].ToUpperInvariant();
         return new OrderNumber($"ORD-{datePart}-{randomPart}");
     }

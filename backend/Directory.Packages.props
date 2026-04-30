@@ -18,6 +18,13 @@
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
 
+    <!-- CQRS / Mediator -->
+    <PackageVersion Include="MediatR" Version="13.0.0" />
+
+    <!-- Micro-ORM -->
+    <PackageVersion Include="Dapper" Version="2.1.66" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.1" />
+
     <!-- Logging -->
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.6" />
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />

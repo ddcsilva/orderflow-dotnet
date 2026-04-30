@@ -12,9 +12,13 @@
   </Folder>
   <Folder Name="/src/Services/Orders/">
     <Project Path="src/Services/Orders/OrderFlow.Orders.Domain/OrderFlow.Orders.Domain.csproj" />
+    <Project Path="src/Services/Orders/OrderFlow.Orders.Application/OrderFlow.Orders.Application.csproj" />
+    <Project Path="src/Services/Orders/OrderFlow.Orders.Infrastructure/OrderFlow.Orders.Infrastructure.csproj" />
+    <Project Path="src/Services/Orders/OrderFlow.Orders.Api/OrderFlow.Orders.Api.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OrderFlow.Catalog.Api.Tests/OrderFlow.Catalog.Api.Tests.csproj" />
     <Project Path="tests/OrderFlow.Orders.Domain.Tests/OrderFlow.Orders.Domain.Tests.csproj" />
+    <Project Path="tests/OrderFlow.Orders.Application.Tests/OrderFlow.Orders.Application.Tests.csproj" />
   </Folder>
 </Solution>
