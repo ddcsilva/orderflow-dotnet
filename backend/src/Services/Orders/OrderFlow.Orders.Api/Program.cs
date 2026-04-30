@@ -1,7 +1,11 @@
 using System.Globalization;
+using System.Text;
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using OrderFlow.Orders.Application;
 using OrderFlow.Orders.Infrastructure;
+using OrderFlow.SharedKernel.Auth;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +16,30 @@ builder.Host.UseSerilog((ctx, cfg) => cfg
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// JWT Authentication (validates tokens issued by Identity API)
+builder.Services.Configure<JwtSettings>(
+    builder.Configuration.GetSection(JwtSettings.SectionName));
+
+var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()!;
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtSettings.Issuer,
+            ValidAudience = jwtSettings.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtSettings.Secret)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -52,6 +80,9 @@ app.UseExceptionHandler(appBuilder =>
         }
     });
 });
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 

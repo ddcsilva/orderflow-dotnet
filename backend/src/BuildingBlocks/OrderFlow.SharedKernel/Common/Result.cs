@@ -1,4 +1,4 @@
-namespace OrderFlow.Orders.Application.Common;
+namespace OrderFlow.SharedKernel.Common;
 
 public class Result
 {

@@ -1,5 +1,6 @@
 using MediatR;
 using OrderFlow.Orders.Application.Common;
+using OrderFlow.SharedKernel.Common;
 using OrderFlow.Orders.Domain.Aggregates.OrderAggregate;
 using OrderFlow.Orders.Domain.Interfaces;
 using OrderFlow.Orders.Domain.ValueObjects;

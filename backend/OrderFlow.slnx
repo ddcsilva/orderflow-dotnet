@@ -16,9 +16,13 @@
     <Project Path="src/Services/Orders/OrderFlow.Orders.Infrastructure/OrderFlow.Orders.Infrastructure.csproj" />
     <Project Path="src/Services/Orders/OrderFlow.Orders.Api/OrderFlow.Orders.Api.csproj" />
   </Folder>
+  <Folder Name="/src/Services/Identity/">
+    <Project Path="src/Services/Identity/OrderFlow.Identity.Api/OrderFlow.Identity.Api.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OrderFlow.Catalog.Api.Tests/OrderFlow.Catalog.Api.Tests.csproj" />
     <Project Path="tests/OrderFlow.Orders.Domain.Tests/OrderFlow.Orders.Domain.Tests.csproj" />
     <Project Path="tests/OrderFlow.Orders.Application.Tests/OrderFlow.Orders.Application.Tests.csproj" />
+    <Project Path="tests/OrderFlow.Identity.Api.Tests/OrderFlow.Identity.Api.Tests.csproj" />
   </Folder>
 </Solution>

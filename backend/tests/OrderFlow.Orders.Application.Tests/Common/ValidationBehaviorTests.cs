@@ -5,6 +5,7 @@ using MediatR;
 using Moq;
 using OrderFlow.Orders.Application.Common;
 using OrderFlow.Orders.Application.Common.Behaviors;
+using OrderFlow.SharedKernel.Common;
 
 namespace OrderFlow.Orders.Application.Tests.Common;
 

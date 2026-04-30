@@ -1,5 +1,6 @@
 using MediatR;
 using OrderFlow.Orders.Application.Common;
+using OrderFlow.SharedKernel.Common;
 using OrderFlow.Orders.Application.Common.Interfaces;
 
 namespace OrderFlow.Orders.Application.Orders.Queries.GetOrdersByCustomer;

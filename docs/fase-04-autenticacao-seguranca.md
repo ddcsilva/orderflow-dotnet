@@ -575,11 +575,11 @@ public sealed class TokenService(IOptions<JwtSettings> jwtSettings) : ITokenServ
 
 **`src/Services/Identity/OrderFlow.Identity.Api/Services/IAuthService.cs`**
 
-> **⚠️ Acoplamento entre serviços:** A Identity API referencia `OrderFlow.Orders.Application.Common` para reutilizar `Result<T>`. Em produção, `Result<T>` e `Error` devem residir em `OrderFlow.SharedKernel` (basta mover os dois arquivos e atualizar os `namespace`/`using`). Mantemos essa simplificação aqui para evitar alterar dezenas de usings nos exemplos anteriores.
+> **✅ Implementação real:** `Result<T>` e `Error` foram **movidos para `OrderFlow.SharedKernel.Common`** (ver seção 5.11, item 1). Por isso a Identity API referencia apenas `OrderFlow.SharedKernel` e o `using` é `OrderFlow.SharedKernel.Common`. A versão abaixo do bloco mostra o estado real do repositório.
 
 ```csharp
 using OrderFlow.Identity.Api.DTOs;
-using OrderFlow.Orders.Application.Common;
+using OrderFlow.SharedKernel.Common;
 
 namespace OrderFlow.Identity.Api.Services;
 
@@ -1110,6 +1110,63 @@ app.UseAuthorization();
 // Nos controllers:
 // [Authorize] ou [Authorize(Policy = "CustomerOrAdmin")]
 ```
+
+---
+
+### 5.11 Notas de Engenharia (estado real do repositório)
+
+> Esta seção documenta as **divergências entre o código de referência acima e a implementação real** no repositório, mantendo o documento como espelho fiel do código.
+
+**1. `Result<T>` e `Error` migrados para o `SharedKernel`**
+- Localização real: [`backend/src/BuildingBlocks/OrderFlow.SharedKernel/Common/Result.cs`](../backend/src/BuildingBlocks/OrderFlow.SharedKernel/Common/Result.cs) e [`Error.cs`](../backend/src/BuildingBlocks/OrderFlow.SharedKernel/Common/Error.cs).
+- Namespace real: `OrderFlow.SharedKernel.Common` (não `OrderFlow.Orders.Application.Common`).
+- A `Identity API` referencia **somente** `OrderFlow.SharedKernel` — sem acoplamento cruzado a `Orders.Application`. Os 12 arquivos de Application que usavam `Result`/`Error` receberam um `using OrderFlow.SharedKernel.Common;` adicional. `OrderErrors` permanece em `OrderFlow.Orders.Application.Common` (erros específicos do domínio Orders).
+
+**2. `JwtSettings` — propriedades com `init` mas com valor padrão preservado**
+- Implementação real em [`OrderFlow.SharedKernel/Auth/JwtSettings.cs`](../backend/src/BuildingBlocks/OrderFlow.SharedKernel/Auth/JwtSettings.cs) idêntica ao bloco da seção 5.1.
+
+**3. `Program.cs` — chamada assíncrona da pipeline**
+- Em vez de `app.Run();`, usamos `await app.RunAsync();` para evitar `CA1849`.
+- Adicionado `public partial class Program;` no fim do arquivo para habilitar `WebApplicationFactory<Program>` nos testes de integração.
+
+**4. `Serilog` — `IFormatProvider` explícito no Console sink**
+- O sink `Console` é configurado com `formatProvider: CultureInfo.InvariantCulture` para satisfazer `CA1305` (analyzer ativo via `Directory.Build.props`). Por isso `Program.cs` adiciona `using System.Globalization;`.
+
+**5. `RoleManager.NormalizedName` — `ToUpperInvariant()`**
+- Trocamos `role.ToUpper()` por `role.ToUpperInvariant()` no seed inicial de roles para satisfazer `CA1304/CA1311`.
+
+**6. `AuthService` — `RefreshToken` adicionado direto via `DbSet`**
+- Em vez de `user.RefreshTokens.Add(...)` + `SaveChanges` (que dispara `DbUpdateConcurrencyException` no provider InMemory porque o `ConcurrencyStamp` do `ApplicationUser` foi modificado pelo `UserManager`), adicionamos via `dbContext.RefreshTokens.Add(refreshToken)`. O comportamento funcional é idêntico (a FK `UserId` já está setada pelo `TokenService`), mas evita atualização indevida do agregado `ApplicationUser`.
+
+**7. `Program.cs` — `AddDbContext` condicional ao ambiente**
+- Em ambiente `"Testing"` (definido pela `CustomWebApplicationFactory`), o `AddDbContext<AppIdentityDbContext>` que usa `UseSqlServer(...)` é **pulado**. A factory de testes registra a versão `UseInMemoryDatabase`. Isso evita o conflito entre dois providers EF Core no mesmo container DI (que produz `Test process did not return valid JSON` ou falhas de inicialização do `DbContextServices`).
+
+**8. `CustomWebApplicationFactory` para a Identity API**
+- Arquivo: [`backend/tests/OrderFlow.Identity.Api.Tests/CustomWebApplicationFactory.cs`](../backend/tests/OrderFlow.Identity.Api.Tests/CustomWebApplicationFactory.cs).
+- Define `UseEnvironment("Testing")` + sobrescreve `JwtSettings:*` via `UseSetting(...)` para que o build da app não falhe no `Get<JwtSettings>()!`.
+- Os testes usam `IClassFixture<CustomWebApplicationFactory>` e `TestContext.Current.CancellationToken` (xunit.v3) em vez de `CancellationToken.None` (evita `xUnit1051`).
+
+**9. Pacotes adicionados em `Directory.Packages.props`**
+- `Microsoft.AspNetCore.Identity.EntityFrameworkCore` 10.0.6
+- `Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.6
+- `System.IdentityModel.Tokens.Jwt` 8.16.0
+- `FluentValidation.AspNetCore` 11.3.1 (FluentValidation 12 deprecou o pacote `AspNetCore`; usamos a versão estável anterior — equivalente funcional para `AddFluentValidationAutoValidation()`).
+
+**10. `<NoWarn>` aplicados**
+- `OrderFlow.SharedKernel.csproj`: `CA1716;CA1000` (necessários para `Error`/`Result<T>`).
+- `OrderFlow.Identity.Api.csproj`: `CA1848;CA1873;CA1515;CA1305;CA1304;CA1311;CA2007;CA1812`.
+- `OrderFlow.Identity.Api.Tests.csproj`: `CA1707;xUnit1051;CA2007;CA1305`.
+
+**11. `Orders.Api` — JWT Bearer adicionado**
+- [`OrderFlow.Orders.Api/Program.cs`](../backend/src/Services/Orders/OrderFlow.Orders.Api/Program.cs) agora bind `JwtSettings`, registra `AddJwtBearer(...)` com os mesmos `Issuer/Audience/Secret` e adiciona `app.UseAuthentication(); app.UseAuthorization();` na pipeline. A seção `JwtSettings` foi adicionada ao `appsettings.json`.
+
+**12. Solution (`OrderFlow.slnx`)**
+- Adicionada a pasta `/src/Services/Identity/` com `OrderFlow.Identity.Api.csproj` e o teste `OrderFlow.Identity.Api.Tests.csproj` em `/tests/`.
+
+**13. Status de build e testes**
+- `dotnet build OrderFlow.slnx`: **0 erros, 0 warnings**.
+- `dotnet test`: 5 (Application) + 7 (Identity) + 17 (Catalog) = **29 testes verdes**.
+- `OrderFlow.Orders.Domain.Tests` (44 testes da Fase 2) está bloqueada por uma política do Windows Smart App Control no executável do test host neste ambiente (erro `0x800711C7`); roda em qualquer máquina sem essa política. Não é regressão da Fase 4.
 
 ---
 
