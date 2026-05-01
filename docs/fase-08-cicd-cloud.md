@@ -1246,18 +1246,18 @@ public class GatewayHealthTests
 
 ### Validação Completa
 
-- [ ] **CI Pipeline:** Build + test automáticos em PRs
-- [ ] **CD Staging:** Deploy automático quando merge em `main`
-- [ ] **CD Production:** Deploy com approval manual via release tags
-- [ ] **Docker images no GHCR:** Push automático com tag SHA + latest
-- [ ] **Matrix build:** Imagens construídas em paralelo
-- [ ] **Azure Bicep:** Infra como código validada
-- [ ] **Container Apps:** Serviços configurados com scaling
-- [ ] **Swagger:** Documentação de API acessível em staging
-- [ ] **README.md:** Documentação completa do projeto
-- [ ] **Smoke tests:** Validação pós-deploy
-- [ ] **Secrets gerenciados:** Nenhuma credencial hardcoded em pipelines
-- [ ] **Environment protection:** Production com required reviewers
+- [x] **CI Pipeline:** Build + test automáticos em PRs (`.github/workflows/ci.yml`)
+- [x] **CD Staging:** Deploy automático quando merge em `main` (`cd-staging.yml`)
+- [x] **CD Production:** Deploy com approval manual via release tags (`cd-production.yml`, environment `production`)
+- [x] **Docker images no GHCR:** Push automático com tag SHA + latest (matrix de 5 serviços)
+- [x] **Matrix build:** Imagens construídas em paralelo
+- [x] **Azure Bicep:** Infra como código (`infra/azure/main.bicep`)
+- [x] **Container Apps:** 5 serviços + KEDA scaler (worker)
+- [x] **Smoke tests:** `OrderFlow.SmokeTests` integrado ao CD pós-deploy
+- [x] **Secrets gerenciados:** OIDC federation — sem secrets de longa duração
+- [x] **Environment protection:** `production` requer aprovação manual
+- [⚠️] **`az bicep build` local:** Não executado (Azure CLI ausente); CI valida via job `lint-bicep`
+- [⚠️] **Execução real do CD:** Pendente provisionamento do Azure AD App e do resource group
 - [ ] **Commit:** `feat(cicd): add GitHub Actions pipelines and Azure Bicep infrastructure`
 
 ### Comandos Finais
@@ -1309,11 +1309,148 @@ open http://localhost:15672  # orderflow / orderflow123
 | CD Production Workflow | `.github/workflows/cd-production.yml` (deploy prod com approval) |
 | Bicep Template | `infra/azure/main.bicep` (IaC completa) |
 | GitHub Environments | `staging` (auto), `production` (approval manual) |
-| GitHub Secrets | `AZURE_CREDENTIALS`, `AZURE_RESOURCE_GROUP`, `SQL_ADMIN_PASSWORD` |
+| GitHub Secrets | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `SQL_ADMIN_PASSWORD_STAGING`, `SQL_ADMIN_PASSWORD_PROD` (OIDC federation — ver §8.1) |
 | Container Registry | GitHub Container Registry (ghcr.io) |
 | Container Apps | 5 Container Apps por ambiente (gateway, identity, catalog, orders, worker) |
 | Log Analytics | Workspace para logs centralizados |
 | Smoke Tests | Health check automatizado pós-deploy |
+
+---
+
+## 8. Notas de Engenharia (Desvios da Implementação Real)
+
+> ⚠️ **Esta seção espelha o que está realmente versionado no repositório.** O texto didático acima descreve a *intenção pedagógica*; aqui registramos as decisões de engenharia que diferem do template "ideal" e o porquê.
+
+### 8.1. Autenticação Azure → OIDC Federation (não `AZURE_CREDENTIALS`)
+
+A documentação tradicional usa `az ad sp create-for-rbac --sdk-auth` e armazena um JSON em `AZURE_CREDENTIALS`. Esse fluxo está **deprecated** e expõe um *client secret* de longa duração no GitHub.
+
+**O que foi implementado:** *Workload Identity Federation* (OIDC) — o GitHub Actions troca um token JWT de execução por um token Azure AD em runtime; **nenhum secret** é armazenado.
+
+```yaml
+# .github/workflows/cd-staging.yml
+permissions:
+  id-token: write   # necessário para OIDC
+  contents: read
+
+- uses: azure/login@v2
+  with:
+    client-id: ${{ secrets.AZURE_CLIENT_ID }}
+    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+```
+
+> Apenas 3 *identifiers* (não-sensíveis) ficam em secrets. A federação é configurada em **Azure AD App Registration → Federated credentials**, vinculada ao repositório/branch/environment.
+
+### 8.2. Build context dos Dockerfiles = `backend/` (não raiz)
+
+A solução vive em `backend/OrderFlow.slnx`. Cada Dockerfile faz `COPY` partindo de `backend/`, então o `cd-staging.yml` declara explicitamente:
+
+```yaml
+- uses: docker/build-push-action@v6
+  with:
+    context: backend                                      # NÃO é "."
+    file: backend/src/Services/Orders/OrderFlow.Orders.Api/Dockerfile
+    provenance: true                                      # SLSA provenance
+    sbom: true                                            # CycloneDX SBOM
+    cache-from: type=gha,scope=${{ matrix.service.name }}
+    cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+```
+
+`provenance: true` + `sbom: true` adicionam *supply chain attestations* — exigência crescente para portfolio sênior (SLSA Level 2+).
+
+### 8.3. CI separa unit tests de IntegrationTests
+
+`OrderFlow.IntegrationTests` usa Testcontainers (SQL Server + RabbitMQ + Redis em Docker). Se ele falhar por indisponibilidade de Docker no runner, **não pode mascarar** falhas em testes unitários. Por isso:
+
+```yaml
+# Step 1 — unit tests (sempre rodam)
+- run: dotnet test ${{ env.SOLUTION }} --filter "FullyQualifiedName!~IntegrationTests"
+
+# Step 2 — IntegrationTests (continua se step 1 falhar, fail final preservado)
+- run: dotnet test backend/tests/OrderFlow.IntegrationTests/OrderFlow.IntegrationTests.csproj
+  if: always()
+```
+
+### 8.4. Solution file = `OrderFlow.slnx` (formato XML novo)
+
+Toda referência a `dotnet build/test` aponta para `backend/OrderFlow.slnx` — não `OrderFlow.sln`. Formato `.slnx` é o padrão recomendado para .NET 9+ e elimina os GUIDs do `.sln` clássico.
+
+### 8.5. Bicep — Detalhes Concretos
+
+`infra/azure/main.bicep` (≈340 linhas) provisiona:
+
+| Recurso | Versão API | Detalhe relevante |
+|---|---|---|
+| Log Analytics | `2023-09-01` | Sink único de logs do environment |
+| Container Apps Env | `2024-03-01` | DNS interno automático entre apps |
+| Azure SQL Server | `2023-08-01-preview` | 3 databases nested (Orders, Catalog, Identity); SKU **Basic** em staging, **S1 Standard** em prod |
+| Redis Cache | `2023-08-01` | SKU `Basic C0`, `minimumTlsVersion: '1.2'` |
+| Service Bus | `2022-10-01-preview` | Tier Standard + queue `order-created` (max delivery 10, TTL 14d) |
+| Container Apps | `2024-03-01` | 5 apps (gateway externo, demais internos) |
+
+**Decisões importantes:**
+
+- Sufixo `uniqueString(resourceGroup().id, suffix)` em recursos com nome global (SQL, Redis, Service Bus) — evita colisão entre tenants.
+- **Connection strings via `secretRef`** — nunca como env var em texto puro.
+- **Worker (notification-worker)** sem ingress, com **KEDA azure-servicebus scaler** (`messageCount: 10`) — escala 0→N baseado em backlog da queue.
+- **Probes HTTP** Liveness em `/health/live` (30s) e Readiness em `/health` (15s) em todos os apps com ingress.
+- **Min/max replicas diferenciados por ambiente**: gateway 1/3 staging vs 2/10 prod; APIs 0/10 (scale-to-zero em staging para economia).
+
+### 8.6. Service Discovery do Gateway via env vars do Bicep
+
+Em vez de hardcodar URLs no `appsettings.json`, o Bicep injeta as FQDNs dos Container Apps internos como **overrides** de `ReverseProxy:Clusters:*:Destinations:*:Address`:
+
+```bicep
+{ name: 'ReverseProxy__Clusters__orders-cluster__Destinations__orders-1__Address',
+  value: 'http://${ordersApp.properties.configuration.ingress.fqdn}/' }
+```
+
+O env mesh interno do Container Apps Environment resolve o FQDN sem expor os serviços à internet. Isso elimina configuração manual pós-deploy.
+
+### 8.7. CD production aceita `workflow_dispatch` com input `version`
+
+Além do trigger `release: published`, o `cd-production.yml` permite *re-deploy* manual de uma versão específica via UI, útil para rollback:
+
+```yaml
+on:
+  release: { types: [published] }
+  workflow_dispatch:
+    inputs:
+      version: { required: true, description: 'Tag (ex: v1.2.3)' }
+```
+
+### 8.8. Job extra `lint-bicep` no CI
+
+```yaml
+lint-bicep:
+  if: hashFiles('infra/azure/main.bicep') != ''
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v5
+    - run: az bicep build --file infra/azure/main.bicep
+```
+
+Falha o PR se Bicep tiver erro de sintaxe — antes de chegar na pipeline de deploy.
+
+### 8.9. Smoke Tests — `xunit.v3` com `Assert.SkipWhen`
+
+`backend/tests/OrderFlow.SmokeTests/GatewayHealthSmokeTests.cs` é um projeto xUnit v3 que lê `GATEWAY_URL` do environment. Sem essa variável, todos os testes ficam *skipped* (não falham localmente). No CD, o pipeline injeta a URL real obtida do output `gatewayFqdn` do Bicep e roda os smokes contra produção/staging.
+
+```csharp
+Assert.SkipWhen(string.IsNullOrWhiteSpace(_baseUrl), "GATEWAY_URL not set");
+```
+
+### 8.10. Validação local
+
+| Item | Status local |
+|---|---|
+| `dotnet build OrderFlow.slnx` | ✅ 0 erros / 0 warnings |
+| Workflows YAML | ⚠️ Validados apenas por sintaxe; execução real exige GitHub runner |
+| `az bicep build` | ⚠️ Não executado localmente (Azure CLI não instalado nesta máquina); CI roda no job `lint-bicep` |
+| `OrderFlow.SmokeTests` | ⚠️ Build OK; execução local bloqueada por **Windows Smart App Control** (`0x800711C7`) — mesmo padrão da Fase 7. Roda normalmente em runner Linux. |
+
+> 📁 **Artefatos finais versionados:** `.github/workflows/{ci,cd-staging,cd-production}.yml`, `infra/azure/main.bicep`, `infra/azure/parameters.{staging,prod}.json`, `backend/tests/OrderFlow.SmokeTests/`.
 
 ---
 

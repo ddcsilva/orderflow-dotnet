@@ -1,0 +1,153 @@
+name: CD - Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/orderflow
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write  # OIDC federation com Azure
+
+jobs:
+  build-images:
+    name: Build & Push (${{ matrix.service.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: gateway
+            dockerfile: backend/src/ApiGateway/OrderFlow.Gateway/Dockerfile
+          - name: identity-api
+            dockerfile: backend/src/Services/Identity/OrderFlow.Identity.Api/Dockerfile
+          - name: catalog-api
+            dockerfile: backend/src/Services/Catalog/OrderFlow.Catalog.Api/Dockerfile
+          - name: orders-api
+            dockerfile: backend/src/Services/Orders/OrderFlow.Orders.Api/Dockerfile
+          - name: notification-worker
+            dockerfile: backend/src/Services/Notifications/OrderFlow.Notifications.Worker/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service.name }}
+          tags: |
+            type=sha,prefix=,format=long
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,scope=${{ matrix.service.name }},mode=max
+          provenance: true
+          sbom: true
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-images
+    environment:
+      name: staging
+      url: https://${{ steps.deploy.outputs.gateway-url }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy infrastructure (Bicep what-if)
+        run: |
+          az deployment group what-if \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --template-file infra/azure/main.bicep \
+            --parameters environment=staging \
+                         imagePrefix=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+                         sqlAdminPassword='${{ secrets.SQL_ADMIN_PASSWORD }}'
+
+      - name: Deploy infrastructure (Bicep apply)
+        run: |
+          az deployment group create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --template-file infra/azure/main.bicep \
+            --parameters environment=staging \
+                         imagePrefix=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+                         sqlAdminPassword='${{ secrets.SQL_ADMIN_PASSWORD }}'
+
+      - name: Update container app images to current SHA
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          for app in gateway identity catalog orders worker; do
+            case $app in
+              gateway)  IMG_NAME=gateway ;;
+              identity) IMG_NAME=identity-api ;;
+              catalog)  IMG_NAME=catalog-api ;;
+              orders)   IMG_NAME=orders-api ;;
+              worker)   IMG_NAME=notification-worker ;;
+            esac
+            az containerapp update \
+              --name orderflow-${app}-staging \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --image ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${IMG_NAME}:${IMAGE_TAG}
+          done
+
+      - name: Get gateway URL
+        id: deploy
+        run: |
+          URL=$(az containerapp show \
+            --name orderflow-gateway-staging \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "gateway-url=$URL" >> $GITHUB_OUTPUT
+          echo "Gateway URL: https://$URL"
+
+      - name: Smoke test (gateway /health/live)
+        run: |
+          URL="https://${{ steps.deploy.outputs.gateway-url }}/health/live"
+          for i in {1..30}; do
+            if curl -sfk "$URL" > /dev/null; then
+              echo "✅ Gateway healthy ($URL)"
+              exit 0
+            fi
+            echo "⏳ Waiting ($i/30)..."
+            sleep 10
+          done
+          echo "❌ Gateway never became healthy"
+          exit 1

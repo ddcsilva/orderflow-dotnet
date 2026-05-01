@@ -488,3 +488,152 @@ services.AddResiliencePipeline<string, HttpResponseMessage>("global", ...);
 ✅ Pedido continua sendo criado via fallback (cache stale ou status pendente)
 
 ➡️ **Próxima fase:** [`fase-10-performance-csharp-moderno.md`](./fase-10-performance-csharp-moderno.md) — Span\<T\>, ValueTask, Channels, BenchmarkDotNet, AOT.
+
+---
+
+## 10. Notas de Engenharia (Desvios da Implementação Real)
+
+> ⚠️ **Esta seção espelha o que está versionado no repositório.** O código didático acima descreve o conceito; aqui registramos as decisões reais e as diferenças do template.
+
+### 10.1. Versões reais
+
+| Pacote | Versão | Onde |
+|---|---|---|
+| `Polly.Core` | **8.6.6** | `Directory.Packages.props` |
+| `Polly.Extensions` | 8.6.6 | idem |
+| `Polly.RateLimiting` | 8.6.6 | idem |
+| `Polly.Testing` | 8.6.6 | idem (apenas em projeto de teste) |
+| `Microsoft.Extensions.Http.Resilience` | **10.5.0** | idem |
+
+> A "Simmy" antiga (`Polly.Contrib.Simmy`) **não é usada** — as estratégias de chaos vivem no próprio `Polly.Core` 8.3+ no namespace `Polly.Simmy.*` (`AddChaosFault`, `AddChaosLatency`).
+
+### 10.2. BuildingBlock `OrderFlow.Resilience`
+
+Caminho: `backend/src/BuildingBlocks/OrderFlow.Resilience/`
+
+Conteúdo:
+- `HttpResilienceOptions.cs` — opções tipadas com defaults sensatos + `ChaosOptions` aninhado.
+- `ResiliencePipelineKeys.cs` — constantes (`CatalogClient`, `IdentityClient`, `DefaultHttp`) para evitar magic strings.
+- `TransientHttpPredicates.cs` — método `IsTransient(Outcome<HttpResponseMessage>)` reutilizado por Retry e CB.
+- `ResiliencePipelineRegistrationExtensions.cs` — `AddOrderFlowHttpPipeline(key, configPath)` + `BuildHttpPipeline` (público para testes).
+
+### 10.3. Predicado correto na API v8
+
+A doc didática mostra `ShouldHandle = TransientHttpPredicates.IsTransient` (assinatura `Func<Outcome<T>, ValueTask<bool>>`), mas em Polly 8.6 o `ShouldHandle` espera `Func<RetryPredicateArguments<T>, ValueTask<bool>>`. A implementação real **adapta**:
+
+```csharp
+ShouldHandle = args => TransientHttpPredicates.IsTransient(args.Outcome),
+```
+
+### 10.4. Bulkhead via `AddRateLimiter` + `ConcurrencyLimiterOptions`
+
+Em Polly v8 não existe `AddConcurrencyLimiter(permitLimit, queueLimit)` direto no builder genérico — a forma idiomática usa `Polly.RateLimiting.RateLimiterStrategyOptions` com um `ConcurrencyLimiterOptions` interno do `System.Threading.RateLimiting`.
+
+### 10.5. Ordem real do pipeline (5 estratégias + 2 chaos opcionais)
+
+```
+[1] outer-timeout      — orçamento total
+[2] bulkhead           — concorrência
+[3] retry              — exp+jitter (skipável quando MaxRetryAttempts=0)
+[4] circuit-breaker    — protege downstream
+[5] attempt-timeout    — fail-fast por tentativa
+[6] chaos-fault        — opt-in via config
+[7] chaos-latency      — opt-in via config
+```
+
+Cada estratégia tem `Name` definido — facilita filtrar telemetria (`polly.strategy.events{strategy_name="circuit-breaker"}`).
+
+### 10.6. Retry guarded com `MaxRetryAttempts > 0`
+
+`Polly.RetryStrategyOptions.MaxRetryAttempts` valida em runtime que seja ≥ 1 — para isolar CB **sem** retry nos testes, a implementação envolve o `AddRetry` em `if (opts.MaxRetryAttempts > 0)`. Permite desabilitar retry via config sem violação de invariante.
+
+### 10.7. Configuração externalizada
+
+Toda pipeline lê `IOptionsMonitor<HttpResilienceOptions>` por `key` — `appsettings.json` controla retries/CB/timeouts **sem recompilar**:
+
+```json
+"Resilience": {
+  "CatalogClient": {
+    "TotalRequestTimeout": "00:00:15",
+    "AttemptTimeout": "00:00:03",
+    "ConcurrencyLimit": 100,
+    "MaxRetryAttempts": 3,
+    "RetryBaseDelay": "00:00:00.200",
+    "CircuitBreakerFailureRatio": 0.5,
+    "CircuitBreakerSamplingDuration": "00:00:10",
+    "CircuitBreakerMinimumThroughput": 8,
+    "CircuitBreakerBreakDuration": "00:00:30",
+    "Chaos": { "Enabled": false, "LatencyInjectionRate": 0.1, "LatencyValue": "00:00:05", "FaultInjectionRate": 0.05 }
+  }
+}
+```
+
+`appsettings.Development.json` sobrescreve `Chaos.Enabled = true`.
+
+### 10.8. Integração no Orders — `ICatalogClient`
+
+A interface vive em `OrderFlow.Orders.Application.Common.Interfaces.ICatalogClient` com DTO local `ProductSnapshot` (não vaza `Catalog.Domain.Product` — preserva isolamento entre bounded contexts).
+
+A implementação `CatalogHttpClient` (Infrastructure) usa **degradação graciosa**:
+
+```csharp
+catch (Exception ex) when (ex is HttpRequestException
+                         or TimeoutException
+                         or TimeoutRejectedException
+                         or BrokenCircuitException)
+{
+    _logger.LogWarning(ex, "Catalog API unavailable for {ProductId}", productId);
+    return null; // caller decide entre PendingValidation e cache stale
+}
+```
+
+Registro DI:
+
+```csharp
+services.AddOrderFlowHttpPipeline(
+    ResiliencePipelineKeys.CatalogClient, "Resilience:CatalogClient");
+
+services.AddHttpClient<ICatalogClient, CatalogHttpClient>(client =>
+    client.BaseAddress = new Uri(config["Services:Catalog:BaseUrl"] ?? "http://localhost:5001"));
+```
+
+### 10.9. Telemetria — `Polly` source/meter
+
+Em `OrderFlow.SharedKernel.Observability.OpenTelemetryExtensions`:
+
+```csharp
+.WithTracing(t => t.AddSource("Polly"))
+.WithMetrics(m => m.AddMeter("Polly"))
+```
+
+Métricas chave: `polly.strategy.events`, `polly.strategy.execution.duration`, `polly.circuit_breaker.state`.
+
+### 10.10. Testes unitários — `Polly.Testing`
+
+Projeto: `backend/tests/OrderFlow.Resilience.Tests/`. Cobertura (6 testes, todos verdes):
+
+| Teste | O que valida |
+|---|---|
+| `Pipeline_HasExpectedStrategies_InCanonicalOrder` | `GetPipelineDescriptor()` confirma ordem e tipos das 5 estratégias |
+| `Pipeline_RetriesTransientFailures_AndEventuallySucceeds` | 503→503→200 = 3 tentativas, sucesso |
+| `Pipeline_DoesNotRetry_OnNonTransientStatus` | 400 = 1 tentativa, sem retry |
+| `Pipeline_CircuitBreaker_OpensAfterRepeatedFailures` | CB abre e lança `BrokenCircuitException` |
+| `Pipeline_AttemptTimeout_FailsFast` | Operação 2s com timeout 50ms → `TimeoutRejectedException` |
+| `Pipeline_WithChaosEnabled_AppendsChaosStrategies` | Chaos.Enabled=true adiciona 2 estratégias extras |
+
+### 10.11. Hedging e Fallback **não foram implementados**
+
+A doc didática menciona Hedging e Fallback como padrões. Decisão pragmática:
+- **Hedging**: 2-3x carga no Catalog — não justificável sem requisito P99 apertado.
+- **Fallback explícito**: `CatalogHttpClient` faz fallback **imperativo** (try/catch → null) em vez de `AddFallback` no pipeline. Mais simples, mais testável, suficiente para "produto indisponível → pedido pendente". Reavaliar quando houver cache stale (Fase 6 já tem Redis, mas não foi cabeado para snapshot de produto).
+
+### 10.12. Validação local
+
+| Item | Status |
+|---|---|
+| `dotnet build OrderFlow.slnx` | ✅ 0 erros / 0 warnings |
+| Testes unitários (90 total = 84 prévios + 6 resilience) | ✅ 90/90 passando localmente |
+| Pipeline real contra Catalog rodando | ⚠️ Não exercitado — depende de docker compose; comportamento validado por testes da pipeline |
+| Chaos em Dev | ✅ `appsettings.Development.json` liga `Chaos.Enabled=true` |
+
+> 📁 **Artefatos versionados:** `backend/src/BuildingBlocks/OrderFlow.Resilience/*.cs`, `backend/src/Services/Orders/OrderFlow.Orders.Application/Common/Interfaces/ICatalogClient.cs`, `backend/src/Services/Orders/OrderFlow.Orders.Infrastructure/Http/CatalogHttpClient.cs`, `backend/tests/OrderFlow.Resilience.Tests/`, atualizações em `Directory.Packages.props`, `OpenTelemetryExtensions.cs`, `appsettings*.json` do Orders e `OrderFlow.slnx`.

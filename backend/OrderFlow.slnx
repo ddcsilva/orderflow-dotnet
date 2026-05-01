@@ -6,6 +6,7 @@
   <Folder Name="/src/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/OrderFlow.SharedKernel/OrderFlow.SharedKernel.csproj" />
     <Project Path="src/BuildingBlocks/OrderFlow.Contracts/OrderFlow.Contracts.csproj" />
+    <Project Path="src/BuildingBlocks/OrderFlow.Resilience/OrderFlow.Resilience.csproj" />
   </Folder>
   <Folder Name="/src/Services/" />
   <Folder Name="/src/Services/Catalog/">
@@ -34,5 +35,7 @@
     <Project Path="tests/OrderFlow.Identity.Api.Tests/OrderFlow.Identity.Api.Tests.csproj" />
     <Project Path="tests/OrderFlow.Notifications.Worker.Tests/OrderFlow.Notifications.Worker.Tests.csproj" />
     <Project Path="tests/OrderFlow.IntegrationTests/OrderFlow.IntegrationTests.csproj" />
+    <Project Path="tests/OrderFlow.Resilience.Tests/OrderFlow.Resilience.Tests.csproj" />
+    <Project Path="tests/OrderFlow.SmokeTests/OrderFlow.SmokeTests.csproj" />
   </Folder>
 </Solution>

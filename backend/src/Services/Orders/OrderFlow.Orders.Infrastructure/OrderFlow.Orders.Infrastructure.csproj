@@ -8,6 +8,7 @@
     <ProjectReference Include="..\OrderFlow.Orders.Domain\OrderFlow.Orders.Domain.csproj" />
     <ProjectReference Include="..\OrderFlow.Orders.Application\OrderFlow.Orders.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\OrderFlow.Contracts\OrderFlow.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\OrderFlow.Resilience\OrderFlow.Resilience.csproj" />
   </ItemGroup>
 
   <ItemGroup>

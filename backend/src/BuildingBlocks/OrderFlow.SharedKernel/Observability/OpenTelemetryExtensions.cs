@@ -45,7 +45,8 @@ public static class OpenTelemetryExtensions
                         options.RecordException = true;
                     })
                     .AddSource(DiagnosticsConfig.ServiceName)
-                    .AddSource("MassTransit");
+                    .AddSource("MassTransit")
+                    .AddSource("Polly");
 
                 if (!string.IsNullOrWhiteSpace(otlpEndpoint))
                 {
@@ -58,6 +59,7 @@ public static class OpenTelemetryExtensions
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddMeter(DiagnosticsConfig.ServiceName)
+                    .AddMeter("Polly")
                     .AddPrometheusExporter();
             });
 

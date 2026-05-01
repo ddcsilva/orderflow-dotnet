@@ -6,8 +6,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OrderFlow.Orders.Application.Common.Interfaces;
 using OrderFlow.Orders.Domain.Interfaces;
+using OrderFlow.Orders.Infrastructure.Http;
 using OrderFlow.Orders.Infrastructure.Persistence;
 using OrderFlow.Orders.Infrastructure.Persistence.Repositories;
+using OrderFlow.Resilience;
 using OrderFlow.SharedKernel;
 
 namespace OrderFlow.Orders.Infrastructure;
@@ -69,6 +71,17 @@ public static class DependencyInjection
 
                 rabbitCfg.ConfigureEndpoints(context);
             });
+        });
+
+        // Catalog HTTP client com pipeline Polly v8 (retry + CB + timeout + bulkhead)
+        services.AddOrderFlowHttpPipeline(
+            ResiliencePipelineKeys.CatalogClient,
+            "Resilience:CatalogClient");
+
+        services.AddHttpClient<ICatalogClient, CatalogHttpClient>(client =>
+        {
+            var baseUrl = configuration["Services:Catalog:BaseUrl"] ?? "http://localhost:5001";
+            client.BaseAddress = new Uri(baseUrl);
         });
 
         return services;

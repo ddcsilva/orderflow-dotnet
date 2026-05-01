@@ -1,0 +1,99 @@
+name: CD - Deploy to Production
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image version/tag to deploy (e.g. 1.2.3 or full SHA)'
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/orderflow
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+jobs:
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment:
+      name: production  # Requer reviewers no GitHub Settings → Environments
+      url: https://${{ steps.deploy.outputs.gateway-url }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Deploying version: $VERSION"
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy infrastructure (Bicep apply)
+        run: |
+          az deployment group create \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_PROD }} \
+            --template-file infra/azure/main.bicep \
+            --parameters environment=prod \
+                         imagePrefix=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+                         sqlAdminPassword='${{ secrets.SQL_ADMIN_PASSWORD }}'
+
+      - name: Update container apps to release version
+        run: |
+          IMAGE_TAG=${{ steps.ver.outputs.version }}
+          for app in gateway identity catalog orders worker; do
+            case $app in
+              gateway)  IMG_NAME=gateway ;;
+              identity) IMG_NAME=identity-api ;;
+              catalog)  IMG_NAME=catalog-api ;;
+              orders)   IMG_NAME=orders-api ;;
+              worker)   IMG_NAME=notification-worker ;;
+            esac
+            az containerapp update \
+              --name orderflow-${app}-prod \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_PROD }} \
+              --image ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${IMG_NAME}:${IMAGE_TAG}
+          done
+
+      - name: Get gateway URL
+        id: deploy
+        run: |
+          URL=$(az containerapp show \
+            --name orderflow-gateway-prod \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_PROD }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "gateway-url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Production smoke test
+        run: |
+          URL="https://${{ steps.deploy.outputs.gateway-url }}/health/live"
+          for i in {1..30}; do
+            if curl -sfk "$URL" > /dev/null; then
+              echo "✅ Production healthy"
+              exit 0
+            fi
+            echo "⏳ Waiting ($i/30)..."
+            sleep 10
+          done
+          echo "❌ Production smoke test failed — consider rollback"
+          exit 1
